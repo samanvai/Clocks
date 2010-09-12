@@ -1,0 +1,14 @@
+This is the code for a simple talking clock and thermometer. The
+hardware I used is as follows.
+
+* An AVR ATmega328P processor.
+* A DS1307 TWI/I2C real-time clock.
+* A DS18B20 1-wire temperature sensor.
+* An SPO256 speech synthesiser.
+
+Most of this code is BSD licenced. Check the source code for
+details.
+
+The DS18B20 code is due to Martin Thomas and others:
+
+http://www.siwawi.arubi.uni-kl.de/avr_projects/tempsensor/index.html
