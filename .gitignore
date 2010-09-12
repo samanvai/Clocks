@@ -1,0 +1,7 @@
+*.o
+*.S
+main.elf
+main.hex
+main.lst
+main.map
+junk/
