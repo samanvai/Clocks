@@ -57,17 +57,11 @@ LOW=fuses_low
 
 all: main.hex
 
-# twimaster.S: twimaster.c i2cmaster.h
-# 	$(CC) $(CFLAGS) $(LDFLAGS) -S $< -o $@
-
-# twimaster.o: twimaster.S
-# 	$(CC) $(CFLAGS) -c $< -o $@
-
 crc.S: crc8.c crc8.h
 
 ds18x20.o: ds18x20.c crc8.h ds18x20.h onewire.h
 
-main.S: main.c ds1307.h ds18x20.h led.h spo256.h TWI.h
+main.S: main.c ds1307.h ds18x20.h led.h spo256.h TWI.h uart.h
 
 onewire.S: onewire.c onewire.h
 

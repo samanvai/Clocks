@@ -1,11 +1,12 @@
 /*
  * Simple talking clock / thermometer.
  *
- * (C)opyright Peter Gammie, peteg42 at gmail dot com
- * Commenced September 2010.
  * Synchronous, no interrupts in sight.
  *
+ * See the various headers for the port connections.
+ *
  * (C)opyright 2010 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * Commenced September 2010.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,10 +32,6 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * Commenced September 2010.
- *
- * See the various headers for the port connections.
  */
 
 /*
@@ -59,10 +56,12 @@ options?
 #include <util/delay.h>
 #include <avr/io.h>
 
+#define BAUD 9600
+#include "uart.h"
+
 #include "ds1307.h"
 #include "ds18x20.h"
 #include "spo256.h"
-#include "led.h"
 
 // FIXME abstract from 1-wire.
 #include "onewire.h"
@@ -150,32 +149,43 @@ int main(void)
   PORTC = 0x0;
   PORTD = 0x0;
 
-  led_init();
-  spo256_init();
+  uart_init();
+  uart_putstring("Speaking clock.", true);
+
+  uart_debug_putstring("Initialising the RTC (ds1307)...");
   ds1307_init();
-  ds18x20_init();
+  uart_debug_putstring("The RTC (ds1307) is initialised.");
 
-  {
-    struct ds1307_time_t t;
-    t.seconds = 13;
-    t.minutes = 27;
-    t.hours = 17;
-    ds1307_write(&t);
-  }
+  uart_debug_putstring("Initialising the SPO256...");
+  spo256_init();
+  uart_debug_putstring("The SPO256 is initialised.");
 
-  // speak(talking_computer);
+  speak(talking_computer);
 
   /* for(int i = 0; i < 256; i++) { */
   /*   speak_number(i); */
   /* } */
 
+  /* { */
+  /*   struct ds1307_time_t t; */
+  /*   t.seconds = 13; */
+  /*   t.minutes = 27; */
+  /*   t.hours = 17; */
+  /*   ds1307_write(&t); */
+  /* } */
+
   while(1) {
     struct ds1307_time_t t;
 
-    ds18x20_read();
-    _delay_ms(5000);
-
     if(ds1307_read(&t)) {
+      uart_putstring("The time is ", false);
+      uart_putw_dec(t.hours);
+      uart_putstring(" hours ", false);
+      uart_putw_dec(t.minutes);
+      uart_putstring(" minutes ", false);
+      uart_putw_dec(t.seconds);
+      uart_putstring(" seconds", true);
+
       speak(the);
       speak(time);
       speak(is);
@@ -187,11 +197,14 @@ int main(void)
       speak_number(t.seconds);
       speak(seconds);
     } else {
+      uart_debug_putstring("** ds1307 read failure");
       speak(no);
     }
 
     _delay_ms(5000);
   }
 
-  led_flash(10);
+  // ds18x20_read();
+
+  // ds18x20_init();
 }

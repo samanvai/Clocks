@@ -38,6 +38,10 @@
 
 #include <stdbool.h>
 
+// FIXME 10kHz I2C clock.
+// #define SCL_CLOCK  400000L
+#define SCL_CLOCK  10000L
+
 #include "TWI.h"
 
 // FIXME
@@ -158,7 +162,8 @@ ds1307_init(void)
     if(!TWI_write(&twsr, reg0 & ~CLOCK_HALT)) goto error;
   }
 
-  TWI_send_stop(&twsr);
+  // TWI_send_stop(&twsr);
+
   return true;
 
  error:

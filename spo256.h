@@ -53,61 +53,56 @@ FIXME document.
 
 Trivial spo256 driver. See below for port connections.
 
-FIXME probably makes more sense to use Port C (only 6 bits) as I don't
-need the ADC.
-
-Where does the I2C hook into? PC4-5, so no Port C for me...
-
 So use Port C instead of PortB? Interrupts are where? Want an
 interrupt for the SBY line? PCINT is a blunderbuss. What are the
 options?
 
  */
 
-#define ALD (_BV(PD7))
+#define ALD (_BV(PB0))
 
-#define RESET (_BV(PB0))
-#define SBY (_BV(PB1))
+#define RESET (_BV(PB7))
+#define SBY (_BV(PB6))
 
 static inline void
 spo256_init(void)
 {
   // Port D:
-  //   D0 - D5 data
-  //   D7 ALD, active-low (address load)
+  //   D2 - D7 data
   PORTD = 0x0;
-  DDRD = 0xFF; // 0x3F | ALD;
+  DDRD = 0xFC;
 
   // Port B:
-  //   B0: RESET, active low.
-  //   B1: SBY, active high (standby, chip idle, input)
+  //   B0: ALD, active-low (address load)
+  //   B6: SBY, active high (standby, chip idle, input)
+  //   B7: RESET, active low.
   PORTB = 0x0;
   DDRB &= SBY;
+  DDRB |= ALD;
   DDRB |= RESET;
 
   // Reset must be held low for at least 100ns, here 1ms, overkill.
-  led_on();
   PORTB |= RESET;
   _delay_ms(1);
   PORTB &= ~RESET;
   _delay_ms(1);
   // _delay_loop_1(); FIXME 3 cycles per loop.
   PORTB |= RESET;
-  led_off();
 }
 
 static inline void
 load_allophone(uint8_t allophone)
 {
   // Load allophone, holding ALD high.
-  PORTD = (allophone & 0x3F) | ALD;
+  PORTD = (allophone & 0x3F) << 2;
+  PORTB |= ALD;
 
   // Take ALD low for at least 1.1us, overkill.
   // _delay_ms(1);
-  PORTD &= ~ALD;
+  PORTB &= ~ALD;
   _delay_ms(1);
   // _delay_loop_1(); FIXME 3 cycles per loop.
-  PORTD |= ALD;
+  PORTB |= ALD;
 
   // Wait for the chip to finish.
   // FIXME an interrupt might be the go here.

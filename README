@@ -6,8 +6,11 @@ hardware I used is as follows.
 * A DS18B20 1-wire temperature sensor.
 * An SPO256 speech synthesiser.
 
-Most of this code is BSD licenced. Check the source code for
-details.
+The circuitry is completely stock. The connections between the AVR and
+the other chips can be easily inferred from the source code.
+
+Most of this code is BSD licenced. Check the individual source files
+for details.
 
 The DS18B20 code is due to Martin Thomas and others:
 
