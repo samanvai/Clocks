@@ -55,90 +55,85 @@ options?
 
 #include <util/delay.h>
 #include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/power.h>
+#include <avr/sleep.h>
 
 #define BAUD 9600
 #include "uart.h"
 
 #include "ds1307.h"
-#include "ds18x20.h"
 #include "spo256.h"
-
-// FIXME abstract from 1-wire.
-#include "onewire.h"
-
-// FIXME maximum number of ds18x20 sensors.
-#define MAXSENSORS 1
-uint8_t gSensorIDs[MAXSENSORS][OW_ROMCODE_SIZE];
-
-static
-uint8_t search_sensors(void)
-{
-  uint8_t id[OW_ROMCODE_SIZE];
-  uint8_t diff, nSensors;
-
-  ow_reset();
-
-  nSensors = 0;
-
-  diff = OW_SEARCH_FIRST;
-  while( diff != OW_LAST_DEVICE && nSensors < MAXSENSORS) {
-    DS18X20_find_sensor(&diff, id);
-
-    if( diff == OW_PRESENCE_ERR ) {
-      speak(no);
-      speak(clown);
-      break;
-    }
-
-    if( diff == OW_DATA_ERR ) {
-      speak(clown);
-      break;
-    }
-
-    for(uint8_t i = 0; i < OW_ROMCODE_SIZE; i++) {
-      gSensorIDs[nSensors][i] = id[i];
-    }
-
-    nSensors++;
-  }
-
-  return nSensors;
-}
-
-static
-void ds18x20_init(void)
-{
-  uint8_t nSensors = search_sensors();
-  speak_number(nSensors);
-  speak(sensors);
-}
-
-static
-void ds18x20_read(void)
-{
-  // range from -550:-55.0°C to 1250:+125.0°C -> min. 6+1 chars
-  int16_t decicelsius;
-
-  DS18X20_start_meas(DS18X20_POWER_PARASITE, NULL);
-  _delay_ms(DS18B20_TCONV_12BIT);
-  DS18X20_read_decicelsius_single(gSensorIDs[0][0], &decicelsius);  // family-code for conversion-routine
-
-  int8_t d = decicelsius / 10;
-  uint8_t r = decicelsius % 10;
-
-  speak(it);
-  speak(is);
-  speak_number(d);
-  if(r > 0) {
-    speak(point);
-    speak_number(r);
-  }
-  speak(degrees);
-}
 
 /* **************************************** */
 
-int main(void)
+volatile bool do_speak_the_time = true;
+
+/* FIXME which PC int? Any?
+ - UART activity - PCINT16 - PCI2
+ - SPO completion - PCINT6 - PCI0
+ */
+ISR(PCINT0_vect)
+{
+  // uart_putstring("PCINT0", true);
+}
+
+// 1Hz tick from the RTC - PC1 - PCINT11 - PCI1.
+ISR(PCINT1_vect)
+{
+  // uart_putstring("PCINT1", true);
+}
+
+// FIXME UART activity: need to wake up for a while before we get RX interrupts.
+ISR(PCINT2_vect)
+{
+  uart_putstring("PCINT2", true);
+  do_speak_the_time = true;
+}
+
+ISR(USART_RX_vect)
+{
+  uint8_t c;
+  c = UDR0;
+  sei();
+  uart_putstring("USART_RX ", false);
+  uart_write(c);
+  uart_putstring("", true);
+  do_speak_the_time = true;
+}
+
+static void
+speak_the_time(void)
+{
+  struct ds1307_time_t t;
+
+  if(ds1307_read(&t)) {
+    uart_putstring("The time is ", false);
+    uart_putw_dec(t.hours);
+    uart_putstring(" hours ", false);
+    uart_putw_dec(t.minutes);
+    uart_putstring(" minutes ", false);
+    uart_putw_dec(t.seconds);
+    uart_putstring(" seconds", true);
+
+    speak(the);
+    speak(time);
+    speak(is);
+    // FIXME pluralisation
+    speak_number(t.hours);
+    speak(hours);
+    speak_number(t.minutes);
+    speak(minutes);
+    speak_number(t.seconds);
+    speak(seconds);
+  } else {
+    uart_debug_putstring("** ds1307 read failure");
+    speak(no);
+  }
+}
+
+int
+main(void)
 {
   // FIXME default all IO pins to inputs, no pull-ups.
   DDRB = 0x0;
@@ -149,8 +144,16 @@ int main(void)
   PORTC = 0x0;
   PORTD = 0x0;
 
+  // FIXME pull-up the RTC interrupt pin.
+  PORTC |= _BV(PC3);
+
+  /* Initialise the power management register. */
+  power_all_disable();
+  power_twi_enable();
+  power_usart0_enable();
+
   uart_init();
-  uart_putstring("Speaking clock.", true);
+  uart_putstring("Talking clock.", true);
 
   uart_debug_putstring("Initialising the RTC (ds1307)...");
   ds1307_init();
@@ -160,7 +163,15 @@ int main(void)
   spo256_init();
   uart_debug_putstring("The SPO256 is initialised.");
 
-  speak(talking_computer);
+  /* Enable interrupts after initialising everything. */
+  /* Enable the pin-change interrupts on all pins. FIXME refine. */
+  PCMSK2 = _BV(PCINT16); // Only when the UART receives something (and not when it sends something).
+  PCMSK1 = _BV(PCINT11); // Just the RTC interrupt, not the TWI bus.
+  PCMSK0 = 0xFF;
+  PCICR |= _BV(PCIE2) | _BV(PCIE1) | _BV(PCIE0);
+  sei();
+
+  speak(talking_clock);
 
   /* for(int i = 0; i < 256; i++) { */
   /*   speak_number(i); */
@@ -175,36 +186,15 @@ int main(void)
   /* } */
 
   while(1) {
-    struct ds1307_time_t t;
+    speak_the_time();
 
-    if(ds1307_read(&t)) {
-      uart_putstring("The time is ", false);
-      uart_putw_dec(t.hours);
-      uart_putstring(" hours ", false);
-      uart_putw_dec(t.minutes);
-      uart_putstring(" minutes ", false);
-      uart_putw_dec(t.seconds);
-      uart_putstring(" seconds", true);
-
-      speak(the);
-      speak(time);
-      speak(is);
-      // FIXME pluralisation
-      speak_number(t.hours);
-      speak(hours);
-      speak_number(t.minutes);
-      speak(minutes);
-      speak_number(t.seconds);
-      speak(seconds);
-    } else {
-      uart_debug_putstring("** ds1307 read failure");
-      speak(no);
+    do_speak_the_time = false;
+    while(!do_speak_the_time) {
+      uart_debug_putstring("wake up");
+      set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+      sleep_enable();
+      sleep_cpu();
+      sleep_disable();
     }
-
-    _delay_ms(5000);
   }
-
-  // ds18x20_read();
-
-  // ds18x20_init();
 }

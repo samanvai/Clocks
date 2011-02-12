@@ -53,7 +53,14 @@
 #define DS1307_ADDR  0xD0
 
 /* reg0: Turns the clock oscillator on/off. */
-#define CLOCK_HALT   _BV(7)
+#define CLOCK_HALT   7
+
+/* reg7: Square-wave output. */
+#define SQW_CONTROL_REG 0x07
+
+#define SQW_OUT         7
+#define SQW_SQWE        4
+#define SQW_RS1_RS0_1Hz 0x0
 
 /* reg2: if TWELVE_HOUR
  *         then 12hr mode with AMPM indictor,
@@ -69,6 +76,10 @@ struct ds1307_time_t {
   uint8_t seconds;
   uint8_t minutes;
   uint8_t hours;
+  uint8_t day;
+  uint8_t date;
+  uint8_t month;
+  uint8_t year;
 };
 
 /* **************************************** */
@@ -85,17 +96,14 @@ ds1307_read(struct ds1307_time_t *time_data)
   /* Commence the read. */
   if(!TWI_rep_start(DS1307_ADDR, &twsr, READ)) goto error;
 
-  /* Read the seconds register. */
   if(!TWI_read(&twsr, &data, true)) goto error;
-  time_data->seconds = fromBCD(data & ~CLOCK_HALT);
+  time_data->seconds = fromBCD(data & ~_BV(CLOCK_HALT));
 
-  /* Read the minutes register. */
   if(!TWI_read(&twsr, &data, true)) goto error;
   time_data->minutes = fromBCD(data);
 
   /* Read the hours register. */
-  /* FIXME last read, send NACK. */
-  if(!TWI_read(&twsr, &data, false)) goto error;
+  if(!TWI_read(&twsr, &data, true)) goto error;
   if(data & TWELVE_HOUR) {
     uint8_t hours = fromBCD(data & 0x1F);
     if(data & AMPM) {
@@ -105,6 +113,19 @@ ds1307_read(struct ds1307_time_t *time_data)
   } else {
     time_data->hours = fromBCD(data);
   }
+
+  if(!TWI_read(&twsr, &data, true)) goto error;
+  time_data->day = fromBCD(data);
+
+  if(!TWI_read(&twsr, &data, true)) goto error;
+  time_data->date = fromBCD(data);
+
+  if(!TWI_read(&twsr, &data, true)) goto error;
+  time_data->month = fromBCD(data);
+
+  /* FIXME last read, send NACK. */
+  if(!TWI_read(&twsr, &data, false)) goto error;
+  time_data->year = fromBCD(data);
 
   TWI_send_stop(&twsr);
   return true;
@@ -125,10 +146,14 @@ ds1307_write(struct ds1307_time_t *time_data)
   if(!TWI_start(DS1307_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, 0x0)) goto error;
   /* Keep the oscillator running. */
-  if(!TWI_write(&twsr, toBCD(time_data->seconds) & ~CLOCK_HALT)) goto error;
+  if(!TWI_write(&twsr, toBCD(time_data->seconds) & ~_BV(CLOCK_HALT))) goto error;
   if(!TWI_write(&twsr, toBCD(time_data->minutes))) goto error;
   /* FIXME 24hr time. */
   if(!TWI_write(&twsr, toBCD(time_data->hours))) goto error;
+  if(!TWI_write(&twsr, toBCD(time_data->day))) goto error;
+  if(!TWI_write(&twsr, toBCD(time_data->date))) goto error;
+  if(!TWI_write(&twsr, toBCD(time_data->month))) goto error;
+  if(!TWI_write(&twsr, toBCD(time_data->year))) goto error;
 
   TWI_send_stop(&twsr);
   return true;
@@ -156,13 +181,19 @@ ds1307_init(void)
   if(!TWI_rep_start(DS1307_ADDR, &twsr, READ)) goto error;
   if(!TWI_read(&twsr, &reg0, true)) goto error;
 
-  if(reg0 & CLOCK_HALT) {
+  /* Turn off the clock halt if necessary. */
+  if(reg0 & _BV(CLOCK_HALT)) {
     if(!TWI_rep_start(DS1307_ADDR, &twsr, WRITE)) goto error;
     if(!TWI_write(&twsr, 0x0)) goto error;
-    if(!TWI_write(&twsr, reg0 & ~CLOCK_HALT)) goto error;
+    if(!TWI_write(&twsr, reg0 & ~_BV(CLOCK_HALT))) goto error;
   }
 
-  // TWI_send_stop(&twsr);
+  /* Fire up the 1Hz interrupt. */
+  if(!TWI_rep_start(DS1307_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, SQW_CONTROL_REG)) goto error;
+  if(!TWI_write(&twsr, _BV(SQW_SQWE) | SQW_RS1_RS0_1Hz)) goto error;
+
+  TWI_send_stop(&twsr);
 
   return true;
 

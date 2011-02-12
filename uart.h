@@ -77,6 +77,9 @@ uart_init(void)
   UCSR0B = _BV(RXEN0) | _BV(TXEN0);
   UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
 
+  /* FIXME Receive Complete Interrupt Enable */
+  UCSR0B |= _BV(RXCIE0);
+
 #if USE_2X
   UCSR0A |= (1 << U2X0);
 #else

@@ -16,7 +16,7 @@ CFLAGS+=-std=c99 -pedantic
 CFLAGS+=-mmcu=$(MCU) -DF_CPU=$(F_CPU)           \
 	-fpack-struct -fshort-enums             \
 	-funsigned-bitfields -funsigned-char    \
-	-Wall -Wstrict-prototypes               \
+	-Wall -pedantic -Wstrict-prototypes     \
 	-Wa,-ahlms=main.lst
 #CFLAGS +=-g
 
@@ -82,7 +82,7 @@ main.s: main.o
 	$(OBJDUMP) -S $< > $@
 
 stats: main.o
-	$(OBJDUMP) -h main.out
+	$(OBJDUMP) -h main.elf
 	$(SIZE) main.o
 
 hex: main.hex
