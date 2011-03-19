@@ -1,9 +1,8 @@
 /*
  * DS1307 RTC driver for an ATMEGA328 (really any AVR with TWI hardware).
  *
- * Synchronous, no interrupts in sight.
- *
- * (C)opyright 2010 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * (C)opyright 2010, 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * Commenced September 2010.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,18 +28,12 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
- * Commenced September 2010.
  */
 
 #ifndef _ds1307_H_
 #define _ds1307_H_
 
 #include <stdbool.h>
-
-// FIXME 10kHz I2C clock.
-// #define SCL_CLOCK  400000L
-#define SCL_CLOCK  10000L
 
 #include "TWI.h"
 
@@ -164,12 +157,10 @@ ds1307_write(struct ds1307_time_t *time_data)
   return false;
 }
 
-/* Initialise the TWI interface. */
+/* Initialise the DS11307. Assumes the TWI interface is already initialised. */
 static inline bool
-ds1307_init(void)
+ds1307_init(bool interrupts)
 {
-  TWI_init();
-
   /* Tell the DS1307 to start the oscillator (turn off CLOCK HALT) in
    * case it has lost power. */
   uint8_t twsr;
@@ -189,16 +180,17 @@ ds1307_init(void)
   }
 
   /* Fire up the 1Hz interrupt. */
-  if(!TWI_rep_start(DS1307_ADDR, &twsr, WRITE)) goto error;
-  if(!TWI_write(&twsr, SQW_CONTROL_REG)) goto error;
-  if(!TWI_write(&twsr, _BV(SQW_SQWE) | SQW_RS1_RS0_1Hz)) goto error;
+  if(interrupts) {
+    if(!TWI_rep_start(DS1307_ADDR, &twsr, WRITE)) goto error;
+    if(!TWI_write(&twsr, SQW_CONTROL_REG)) goto error;
+    if(!TWI_write(&twsr, _BV(SQW_SQWE) | SQW_RS1_RS0_1Hz)) goto error;
+  }
 
   TWI_send_stop(&twsr);
 
   return true;
 
  error:
-
   TWI_send_stop(&twsr);
   return false;
 }

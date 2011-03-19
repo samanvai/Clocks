@@ -146,6 +146,9 @@ TWI_rep_start(uint8_t slave_addr, uint8_t *twsr, rw_t rw)
 static inline void
 TWI_init(void)
 {
+  /* Fire up the TWI module. */
+  power_twi_enable();
+
   /* TWI timing: prescaler: 1. */
   TWSR = 0;
 

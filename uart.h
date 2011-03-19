@@ -2,7 +2,7 @@
  * UART driver for an ATMEGA328. Note the constant names are specific
  * to this chip (and perhaps other closely related ones).
  *
- * (C)opyright 2010 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * (C)opyright 2010, 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
  * Commenced September 2010.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,8 +32,8 @@
  *
  */
 
-#ifndef _uart_H_
-#define _uart_H_
+#ifndef _UART_H_
+#define _UART_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -67,6 +67,9 @@ uart_write(uint8_t c)
 static inline void
 uart_init(void)
 {
+  /* Fire up the UART module. */
+  power_usart0_enable();
+
 #include <util/setbaud.h>
 
   /* Set the baud rate */
@@ -139,4 +142,4 @@ uart_putw_dec(uint16_t w)
 // #define putstring(x) ROM_putstring(PSTR(x), 0)
 // #define putstring_nl(x) ROM_putstring(PSTR(x), 1)
 
-#endif /* _uart_H_ */
+#endif /* _UART_H_ */

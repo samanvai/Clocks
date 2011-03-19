@@ -1,11 +1,9 @@
 /*
  * Simple talking clock / thermometer.
  *
- * Synchronous, no interrupts in sight.
- *
  * See the various headers for the port connections.
  *
- * (C)opyright 2010 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * (C)opyright 2010, 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
  * Commenced September 2010.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -62,8 +60,15 @@ options?
 #define BAUD 9600
 #include "uart.h"
 
-#include "ds1307.h"
 #include "spo256.h"
+
+// FIXME 10kHz I2C clock.
+// #define SCL_CLOCK  400000L
+#define SCL_CLOCK  10000L
+
+#include "TWI.h"
+#include "ds1307.h"
+#include "mma7660fc.h"
 
 /* **************************************** */
 
@@ -78,10 +83,13 @@ ISR(PCINT0_vect)
   // uart_putstring("PCINT0", true);
 }
 
-// 1Hz tick from the RTC - PC1 - PCINT11 - PCI1.
+// 1Hz tick from the RTC - PC2 - PCINT10 - PCI1.
+// accelerometer event - PC3 - PCINT11 - PCI1.
 ISR(PCINT1_vect)
 {
-  // uart_putstring("PCINT1", true);
+  uart_putstring("PCINT1", true);
+  mma7660fc_clear_interrupt();
+  // do_speak_the_time = true;
 }
 
 // FIXME UART activity: need to wake up for a while before we get RX interrupts.
@@ -128,8 +136,54 @@ speak_the_time(void)
     speak(seconds);
   } else {
     uart_debug_putstring("** ds1307 read failure");
-    speak(no);
+    speak(time);
+    speak(clown);
   }
+}
+
+static void
+speak_acc_reading(void)
+{
+  int8_t x, y, z;
+
+  if(mma7660fc_read_axes(&x, &y, &z)) {
+    uart_putstring("Acc read successful.", true);
+    uart_putw_dec(x);
+    uart_putstring("", true);
+    uart_putw_dec(y);
+    uart_putstring("", true);
+    uart_putw_dec(z);
+    uart_putstring("", true);
+
+    speak(sensors);
+    speak_number(x);
+    speak_number(y);
+    speak_number(z);
+  } else {
+    uart_putstring("*** Acc read failed.", true);
+    speak(sensors);
+    speak(clown);
+  }
+}
+
+static void
+dump_acc_registers(void)
+{
+  uint8_t twsr;
+  uint8_t t;
+
+  TWI_start(MMA7660FC_ADDR, &twsr, WRITE);
+  TWI_write(&twsr, 0x0);
+  TWI_rep_start(MMA7660FC_ADDR, &twsr, READ);
+
+  for(int i = 0; i <= 0x0A; i++) {
+    TWI_read(&twsr, &t, true);
+    uart_putw_dec(t);
+    uart_putstring("", true);
+  }
+
+  TWI_read(&twsr, &t, false);
+  TWI_send_stop(&twsr);
 }
 
 int
@@ -144,20 +198,32 @@ main(void)
   PORTC = 0x0;
   PORTD = 0x0;
 
-  // FIXME pull-up the RTC interrupt pin.
-  PORTC |= _BV(PC3);
-
-  /* Initialise the power management register. */
+  /* By default switch everything off. */
   power_all_disable();
-  power_twi_enable();
-  power_usart0_enable();
 
   uart_init();
   uart_putstring("Talking clock.", true);
 
+  TWI_init();
+
   uart_debug_putstring("Initialising the RTC (ds1307)...");
-  ds1307_init();
-  uart_debug_putstring("The RTC (ds1307) is initialised.");
+  if(ds1307_init()) {
+    uart_debug_putstring("The RTC (ds1307) is initialised.");
+    // FIXME pull-up the RTC interrupt pin.
+    // PORTC |= _BV(PC2);
+  } else {
+    uart_debug_putstring("** The RTC (ds1307) failed to initialise.");
+  }
+
+  uart_debug_putstring("Initialising the accelerometer (mma7660)...");
+  // if(mma7660fc_init(0x0, 0x0)) {
+  if(mma7660fc_init(_BV(MMA7660FC_INTSU_SHINTX) | _BV(MMA7660FC_INTSU_SHINTY) | _BV(MMA7660FC_INTSU_SHINTZ),
+                    _BV(MMA7660FC_MODE_IPP))) {
+    uart_debug_putstring("The accelerometer (mma7660) is initialised.");
+    dump_acc_registers();
+  } else {
+    uart_debug_putstring("** The accelerometer (mma7660) failed to initialise.");
+  }
 
   uart_debug_putstring("Initialising the SPO256...");
   spo256_init();
@@ -166,35 +232,27 @@ main(void)
   /* Enable interrupts after initialising everything. */
   /* Enable the pin-change interrupts on all pins. FIXME refine. */
   PCMSK2 = _BV(PCINT16); // Only when the UART receives something (and not when it sends something).
-  PCMSK1 = _BV(PCINT11); // Just the RTC interrupt, not the TWI bus.
+  PCMSK1 = 0; // _BV(PCINT11); // _BV(PCINT10) | _BV(PCINT11); // Just the RTC interrupt, not the TWI bus. FIXME adjust: PC2 (accelerometer) and PC3 (RTC).
   PCMSK0 = 0xFF;
   PCICR |= _BV(PCIE2) | _BV(PCIE1) | _BV(PCIE0);
   sei();
 
   speak(talking_clock);
 
-  /* for(int i = 0; i < 256; i++) { */
-  /*   speak_number(i); */
-  /* } */
-
-  /* { */
-  /*   struct ds1307_time_t t; */
-  /*   t.seconds = 13; */
-  /*   t.minutes = 27; */
-  /*   t.hours = 17; */
-  /*   ds1307_write(&t); */
-  /* } */
-
   while(1) {
     speak_the_time();
+    speak_acc_reading();
 
+    /* Wait for an interrupt */
     do_speak_the_time = false;
     while(!do_speak_the_time) {
-      uart_debug_putstring("wake up");
+      uart_debug_putstring("go to sleep");
       set_sleep_mode(SLEEP_MODE_PWR_DOWN);
       sleep_enable();
       sleep_cpu();
       sleep_disable();
+      uart_debug_putstring("woke up");
+      dump_acc_registers();
     }
   }
 }

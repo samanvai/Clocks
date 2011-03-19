@@ -5,6 +5,7 @@ hardware I used is as follows.
 * A DS1307 TWI/I2C real-time clock.
 * A DS18B20 1-wire temperature sensor.
 * An SPO256 speech synthesiser.
+* A MMA7660FC accelerometer.
 
 The circuitry is completely stock. The connections between the AVR and
 the other chips can be easily inferred from the source code.
@@ -15,3 +16,15 @@ for details.
 The DS18B20 code is due to Martin Thomas and others:
 
 http://www.siwawi.arubi.uni-kl.de/avr_projects/tempsensor/index.html
+
+= To Do =
+
+Hardware:
+ - switch off the spo256 when we're not talking
+ - backup battery for the time
+ - check accuracy and current draw
+
+Serial port interface. Commands:
+ - speak these allophones
+ - set the time/date/alarm/...
+ - arduino bootloader?

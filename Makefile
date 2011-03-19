@@ -61,7 +61,7 @@ crc.S: crc8.c crc8.h
 
 ds18x20.o: ds18x20.c crc8.h ds18x20.h onewire.h
 
-main.S: main.c ds1307.h ds18x20.h led.h spo256.h TWI.h uart.h
+main.S: main.c allophones.h ds1307.h ds18x20.h led.h mma7660fc.h spo256.h TWI.h uart.h
 
 onewire.S: onewire.c onewire.h
 
