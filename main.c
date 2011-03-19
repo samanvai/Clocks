@@ -88,7 +88,7 @@ ISR(PCINT0_vect)
 ISR(PCINT1_vect)
 {
   uart_putstring("PCINT1", true);
-  mma7660fc_clear_interrupt();
+  // mma7660fc_clear_interrupt();
   // do_speak_the_time = true;
 }
 
@@ -189,7 +189,7 @@ dump_acc_registers(void)
 int
 main(void)
 {
-  // FIXME default all IO pins to inputs, no pull-ups.
+  /* Default all IO pins to inputs, no pull-ups. */
   DDRB = 0x0;
   DDRC = 0x0;
   DDRD = 0x0;
@@ -198,29 +198,44 @@ main(void)
   PORTC = 0x0;
   PORTD = 0x0;
 
-  /* By default switch everything off. */
+  /* By default power all the sub-modules off. */
   power_all_disable();
+
+  /* Disable all external interrupts. */
+  PCMSK0 = 0x0;
+  PCMSK1 = 0x0;
+  PCMSK2 = 0x0;
+
+  PCICR = 0x0;
 
   uart_init();
   uart_putstring("Talking clock.", true);
 
+  /* Interrupt when the U(S)ART receives something (and not when it sends something). */
+  PCMSK2 = _BV(PCINT16);
+  PCICR |= _BV(PCIE2);
+
   TWI_init();
 
   uart_debug_putstring("Initialising the RTC (ds1307)...");
-  if(ds1307_init()) {
+  if(ds1307_init(true)) {
     uart_debug_putstring("The RTC (ds1307) is initialised.");
-    // FIXME pull-up the RTC interrupt pin.
-    // PORTC |= _BV(PC2);
+
+    /* Pull-up the RTC interrupt pin and listen for Pin Change interrupts. */
+    PORTC |= _BV(PC2);
+    PCMSK1 |= _BV(PCINT10);
+    PCICR |= _BV(PCIE1);
   } else {
     uart_debug_putstring("** The RTC (ds1307) failed to initialise.");
   }
 
   uart_debug_putstring("Initialising the accelerometer (mma7660)...");
-  // if(mma7660fc_init(0x0, 0x0)) {
-  if(mma7660fc_init(_BV(MMA7660FC_INTSU_SHINTX) | _BV(MMA7660FC_INTSU_SHINTY) | _BV(MMA7660FC_INTSU_SHINTZ),
-                    _BV(MMA7660FC_MODE_IPP))) {
+  if(mma7660fc_init()) {
     uart_debug_putstring("The accelerometer (mma7660) is initialised.");
-    dump_acc_registers();
+
+    /* Listen for accelerometer events. */
+    PCMSK1 |= _BV(PCINT11);
+    PCICR |= _BV(PCIE1);
   } else {
     uart_debug_putstring("** The accelerometer (mma7660) failed to initialise.");
   }
@@ -230,11 +245,6 @@ main(void)
   uart_debug_putstring("The SPO256 is initialised.");
 
   /* Enable interrupts after initialising everything. */
-  /* Enable the pin-change interrupts on all pins. FIXME refine. */
-  PCMSK2 = _BV(PCINT16); // Only when the UART receives something (and not when it sends something).
-  PCMSK1 = 0; // _BV(PCINT11); // _BV(PCINT10) | _BV(PCINT11); // Just the RTC interrupt, not the TWI bus. FIXME adjust: PC2 (accelerometer) and PC3 (RTC).
-  PCMSK0 = 0xFF;
-  PCICR |= _BV(PCIE2) | _BV(PCIE1) | _BV(PCIE0);
   sei();
 
   speak(talking_clock);

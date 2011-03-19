@@ -105,6 +105,40 @@ typedef enum {
 /* Auto-wake/sleep, samples, debounce filter register. */
 #define MMA7660FC_SR_REG    0x08
 
+typedef enum {
+  mma7660fc_sr_AMPD = 0x0,
+  /*
+Tap Detection Mode and 120 Samples/Second Active and Auto-Sleep Mode
+Tap Detection Sampling Rate: The device takes readings continually at
+a rate of nominally 3846 g-cell measurements a second. It then filters
+these high speed measurements by maintaining continuous rolling
+averages of the current and last g-cell measurements. The averages are
+updated every 260 μs to track fast moving accelerations. Tap
+detection: itself compares the two filtered axis responses (fast and
+slow) described above for each axis. The absolute (unsigned)
+difference between the fast and slow axis responses is compared
+against the tap detection delta threshold value PDTH[4:0] in the PDET
+(0x09) register. For portrait/landscape detection: The device takes
+and averages 32 g-cell measurements every 8.36 ms in Active Mode and
+Auto-Sleep. The update rate is 120 samples per second. These
+measurements update the XOUT (0x00), YOUT (0x01), and ZOUT (0x02)
+registers also.
+  */
+  mma7660fc_sr_AW8 = _BV(4),
+  /*
+8 Samples/Second Auto-Wake Mode For portrait/landscape detection: The
+device takes and averages 32 g-cell measurements every 125 ms in
+Auto-Wake. The update rate is 8 samples per second. These measurements
+update the XOUT (0x00), YOUT (0x01), and ZOUT (0x02) registers also.
+   */
+  mma7660fc_sr_FILT4 = _BV(6) | _BV(5),
+  /*
+4 measurement samples at the rate set by AMSR[2:0] or AWSR[1:0] have
+to match before the device updates portrait/ landscape data in TILT
+(0x03) register.
+   */
+} mma7660fc_sr_t;
+
 /* Tap detection register. */
 #define MMA7660FC_PDET_REG  0x09
 
@@ -168,16 +202,44 @@ mma7660fc_read_axes(int8_t *x, int8_t *y, int8_t *z)
 
 /* **************************************** */
 
+/* FIXME this is a bit hardwired. */
 static inline bool
-mma7660fc_set_interrupts(uint8_t interrupts)
+mma7660fc_set_interrupts(void)
 {
   uint8_t twsr;
 
+  /* Set the interrupts we want. */
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, MMA7660FC_INTSU_REG)) goto error;
-  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
-  if(!TWI_write(&twsr, interrupts)) goto error;
+  if(!TWI_write(&twsr,
+                _BV(MMA7660FC_INTSU_PDINT))
+     //                _BV(MMA7660FC_INTSU_SHINTX) | _BV(MMA7660FC_INTSU_SHINTY) | _BV(MMA7660FC_INTSU_SHINTZ))
+     ) goto error;
+  TWI_send_stop(&twsr);
 
+  /* Set the sample rate. */
+  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_SR_REG)) goto error;
+  if(!TWI_write(&twsr, mma7660fc_sr_AMPD | mma7660fc_sr_AW8)) goto error;
+  TWI_send_stop(&twsr);
+
+  /* Set the tap/pulse detection threshold: listen on all axes, threshold 0. */
+  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_PDET_REG)) goto error;
+  if(!TWI_write(&twsr, 0x0)) goto error;
+  TWI_send_stop(&twsr);
+
+  /* Set the tap/pulse debounce count. */
+  /*
+Tap detection debounce filtering requires 4 adjacent tap detection
+tests to be the same to trigger a tap event and set the Tap bit in the
+TILT (0x03) register, and optionally set an interrupt if PDINT is set
+in the INTSU (0x06) register. Tap detection response time is nominally
+1.04 ms.
+   */
+  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_PD_REG)) goto error;
+  if(!TWI_write(&twsr, 0x3)) goto error;
   TWI_send_stop(&twsr);
 
   return true;
@@ -197,7 +259,6 @@ mma7660fc_set_mode(mma7660fc_mode_t mode)
 
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, MMA7660FC_MODE_REG)) goto error;
-  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, mode)) goto error;
 
   TWI_send_stop(&twsr);
@@ -235,12 +296,12 @@ mma7660fc_clear_interrupt(void)
 
 /* Initialise the MMA7660. Assumes the TWI interface is already initialised. */
 static inline bool
-mma7660fc_init(uint8_t interrupts, uint8_t mode_bits)
+mma7660fc_init(void)
 {
   /* Device must be placed in standby mode before we can change its registers. */
   if(!mma7660fc_set_mode(mma7660fc_mode_standby)) goto error;
-  if(!mma7660fc_set_interrupts(interrupts)) goto error;
-  if(!mma7660fc_set_mode(mma7660fc_mode_active | mode_bits)) goto error;
+  if(!mma7660fc_set_interrupts()) goto error;
+  if(!mma7660fc_set_mode(mma7660fc_mode_active | _BV(MMA7660FC_MODE_IPP))) goto error;
 
   return true;
 
