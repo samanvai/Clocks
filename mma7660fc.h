@@ -16,18 +16,23 @@
  *    disclaimer in the documentation and/or other materials provided
  *    with the distribution.
  *
- * THIS SOFTWARE IS PROVIDED BY <COPYRIGHT HOLDER> ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
- * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
- * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
+ * Based on Freescale's Application notes:
+ *   http://www.freescale.com/webapp/sps/site/prod_summary.jsp?code=MMA7660FC&tab=Documentation_Tab&pspll=1&SelectedAsset=Documentation&ProdMetaId=PID/DC/MMA7660FC&fromPSP=true&assetLockedForNavigation=true&componentId=2&leftNavCode=1&pageSize=25&Documentation=Documentation/00210KscRcb``Application%20Notes&fpsp=1&linkline=Application%20Notes
+ * The datasheet is a bit lacking.
  */
 
 #ifndef _mma7660fc_H_
@@ -202,56 +207,6 @@ mma7660fc_read_axes(int8_t *x, int8_t *y, int8_t *z)
 
 /* **************************************** */
 
-/* FIXME this is a bit hardwired. */
-static inline bool
-mma7660fc_set_interrupts(void)
-{
-  uint8_t twsr;
-
-  /* Set the interrupts we want. */
-  if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
-  if(!TWI_write(&twsr, MMA7660FC_INTSU_REG)) goto error;
-  if(!TWI_write(&twsr,
-                _BV(MMA7660FC_INTSU_PDINT))
-     //                _BV(MMA7660FC_INTSU_SHINTX) | _BV(MMA7660FC_INTSU_SHINTY) | _BV(MMA7660FC_INTSU_SHINTZ))
-     ) goto error;
-  TWI_send_stop(&twsr);
-
-  /* Set the sample rate. */
-  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
-  if(!TWI_write(&twsr, MMA7660FC_SR_REG)) goto error;
-  if(!TWI_write(&twsr, mma7660fc_sr_AMPD | mma7660fc_sr_AW8)) goto error;
-  TWI_send_stop(&twsr);
-
-  /* Set the tap/pulse detection threshold: listen on all axes, threshold 0. */
-  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
-  if(!TWI_write(&twsr, MMA7660FC_PDET_REG)) goto error;
-  if(!TWI_write(&twsr, 0x0)) goto error;
-  TWI_send_stop(&twsr);
-
-  /* Set the tap/pulse debounce count. */
-  /*
-Tap detection debounce filtering requires 4 adjacent tap detection
-tests to be the same to trigger a tap event and set the Tap bit in the
-TILT (0x03) register, and optionally set an interrupt if PDINT is set
-in the INTSU (0x06) register. Tap detection response time is nominally
-1.04 ms.
-   */
-  if(!TWI_rep_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
-  if(!TWI_write(&twsr, MMA7660FC_PD_REG)) goto error;
-  if(!TWI_write(&twsr, 0x3)) goto error;
-  TWI_send_stop(&twsr);
-
-  return true;
-
- error:
-  TWI_send_stop(&twsr);
-
-  return false;
-}
-
-/* **************************************** */
-
 static inline bool
 mma7660fc_set_mode(mma7660fc_mode_t mode)
 {
@@ -266,8 +221,6 @@ mma7660fc_set_mode(mma7660fc_mode_t mode)
   return true;
 
  error:
-  TWI_send_stop(&twsr);
-
   return false;
 }
 
@@ -294,18 +247,70 @@ mma7660fc_clear_interrupt(void)
   return false;
 }
 
+/* stuff from the app note
+
+//Configure MMA7660FC as Tap Detection
+Write to the MODE register = 0x00 //Standby Mode
+Write to the SPCNT register = 0x00 //No sleep count
+Write to the INTSU register = 0x04 // Configure tap detection Interrupt
+Write to the PDET register = 0x6C // Only Z axis tap detection on, threshold ±12 counts
+Write to the SR register = 0x00 //120 samples/s
+Write to the PD register = 0x08 // Tap detection debounce count = 9
+Write to the MODE register = 0x41 //Active Mode, INT = push-pull and active low
+//Interrupt service routine
+If (Tap INT occurs)
+REGTILT=Read TILT Register;        //Read TILT Register value    
+    
+If (Tap =1) //Verify ”Tap” bit in TILT register
+
+*/
+
 /* Initialise the MMA7660. Assumes the TWI interface is already initialised. */
 static inline bool
 mma7660fc_init(void)
 {
+  uint8_t twsr;
+
   /* Device must be placed in standby mode before we can change its registers. */
   if(!mma7660fc_set_mode(mma7660fc_mode_standby)) goto error;
-  if(!mma7660fc_set_interrupts()) goto error;
+
+  /* No sleep count. */
+  if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_SPCNT_REG)) goto error;
+  if(!TWI_write(&twsr, 0x0)) goto error;
+  TWI_send_stop(&twsr);
+
+  /* Configure tap detection interrupt. FIXME abstract */
+  if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_INTSU_REG)) goto error;
+  if(!TWI_write(&twsr, 0x4)) goto error;
+  TWI_send_stop(&twsr);
+
+  /* Only Z axis tap detection on, threshold ±12 counts */
+  if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_PDET_REG)) goto error;
+  if(!TWI_write(&twsr, 0x6C)) goto error;
+  TWI_send_stop(&twsr);
+
+  /* 120 samples/s. */
+  if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_SR_REG)) goto error;
+  if(!TWI_write(&twsr, 0x0)) goto error;
+  TWI_send_stop(&twsr);
+
+  /* Tap detection debounce count = 9. */
+  if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_PD_REG)) goto error;
+  if(!TWI_write(&twsr, 0x08)) goto error;
+  TWI_send_stop(&twsr);
+
   if(!mma7660fc_set_mode(mma7660fc_mode_active | _BV(MMA7660FC_MODE_IPP))) goto error;
 
   return true;
 
  error:
+  TWI_send_stop(&twsr);
+
   return false;
 }
 

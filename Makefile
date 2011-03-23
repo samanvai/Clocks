@@ -37,7 +37,7 @@ HEXFORMAT=ihex
 AVRDUDE=avrdude
 AVRDUDE_PROGRAMMERID=stk500v2
 ARVDUDE_BAUD=115200
-AVRDUDE_PORT=/dev/ttyUSB1
+AVRDUDE_PORT=/dev/ttyUSB0
 
 AVRDUDE_FLAGS=-c $(AVRDUDE_PROGRAMMERID) -b $(ARVDUDE_BAUD) -p $(PROGRAMMER_MCU) -P $(AVRDUDE_PORT)
 
@@ -61,7 +61,7 @@ crc.S: crc8.c crc8.h
 
 ds18x20.o: ds18x20.c crc8.h ds18x20.h onewire.h
 
-main.S: main.c allophones.h ds1307.h ds18x20.h led.h mma7660fc.h spo256.h TWI.h uart.h
+main.S: main.c allophones.h ds1307.h ds18x20.h mma7660fc.h spo256.h TWI.h uart.h
 
 onewire.S: onewire.c onewire.h
 
