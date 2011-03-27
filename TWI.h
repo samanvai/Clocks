@@ -163,8 +163,9 @@ TWI_init(void)
 }
 
 static inline void
-TWI_sleep(void)
+TWI_turn_off(void)
 {
+  
   power_twi_disable();
 }
 

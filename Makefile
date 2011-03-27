@@ -19,6 +19,7 @@ CFLAGS+=-mmcu=$(MCU) -DF_CPU=$(F_CPU)           \
 	-Wall -pedantic -Wstrict-prototypes     \
 	-Wa,-ahlms=main.lst
 #CFLAGS +=-g
+CFLAGS+=-DDEBUG
 
 # Linker
 LDFLAGS=-Wl,-Map,main.map -mmcu=$(MCU) \
@@ -29,6 +30,11 @@ LDFLAGS=-Wl,-Map,main.map -mmcu=$(MCU) \
 ASMFLAGS =-I. $(INC) -mmcu=$(MCU)        \
 	-x assembler-with-cpp            \
 	-Wa,-gstabs,-ahlms=main.lst
+
+# Esterel. FIXME sorted circuit code generation, ANSI C.
+ESTEREL=/home/peteg/bin/esterel
+ESTEREL_FLAGS=-Lc:-ansi -W -single
+ESTEREL_EXTRA_CFLAGS=-Wno-unused -Wno-strict-prototypes
 
 # Hex
 HEXFORMAT=ihex
@@ -57,15 +63,21 @@ LOW=fuses_low
 
 all: main.hex
 
+controller.c: controller.strl
+	$(ESTEREL) $(ESTEREL_FLAGS) controller.strl -B controller
+
+controller.o: controller.c
+	$(CC) $(CFLAGS) $(ESTEREL_EXTRA_CFLAGS) -c $< -o $@
+
 crc.S: crc8.c crc8.h
 
 ds18x20.o: ds18x20.c crc8.h ds18x20.h onewire.h
 
-main.S: main.c allophones.h ds1307.h ds18x20.h mma7660fc.h spo256.h TWI.h uart.h
+main.S: main.c allophones.h ds1307.h mma7660fc.h spo256.h TWI.h uart.h
 
 onewire.S: onewire.c onewire.h
 
-main.elf: main.o crc8.o ds18x20.o onewire.o
+main.elf: main.o controller.o # crc8.o ds18x20.o onewire.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
 main.hex: main.elf

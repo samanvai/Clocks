@@ -33,14 +33,15 @@
 
 /*
 
-FIXME probably makes more sense to use Port C (only 6 bits) as I don't
-need the ADC.
+FIXME use the watch dog timer instead, say 2s.
+ - if we're talking on the USART, reset the WDT
+  - somehow say "if we're not lively, the WDT ISR should put the CPU to sleep"
+ - otherwise just let it time out
+ - check the alarm on timeout, then go back to sleep
 
-Where does the I2C hook into? PC4-5, so no Port C for me...
+FIXME reset from software.
 
-So use Port C instead of PortB? Interrupts are where? Want an
-interrupt for the SBY line? PCINT is a blunderbuss. What are the
-options?
+FIXME slow down the CPU - 500kHz? TWI / UART might be the limit.
 
  */
 
@@ -53,8 +54,10 @@ options?
 #include <util/delay.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/pgmspace.h>
 #include <avr/power.h>
 #include <avr/sleep.h>
+#include <avr/wdt.h>
 
 #define BAUD 9600
 #include "uart.h"
@@ -70,44 +73,48 @@ options?
 #include "mma7660fc.h"
 
 /* **************************************** */
+/* The Esterel controller defines these. */
 
-volatile bool do_speak_the_time = true;
+extern void CONTROLLER_I_accelerometer_interrupt(void);
+extern void CONTROLLER_I_rtc_interrupt(void);
+extern void CONTROLLER_I_uart_interrupt(void);
 
-/* FIXME which PC int? Any?
- - UART activity - PCINT16 - PCI2
- - SPO completion - PCINT6 - PCI0
- */
+void CONTROLLER_reset(void);
+void CONTROLLER(void);
+
+/* **************************************** */
+/* Interrupt handlers */
+
+/* SPO completion - PCINT6 - PCI0 */
 ISR(PCINT0_vect)
 {
-  // uart_putstring("PCINT0", true);
+  // uart_putstring(PSTR("PCINT0"), true);
 }
 
-// 1Hz tick from the RTC - PC2 - PCINT10 - PCI1.
-// accelerometer event - PC3 - PCINT11 - PCI1.
+/* accelerometer event - PC3 - PCINT11 - PCI1 */
 ISR(PCINT1_vect)
 {
-  uart_putstring("PCINT1", true);
+  uart_putstring(PSTR("PCINT1"), true);
+  CONTROLLER_I_accelerometer_interrupt();
+
   // mma7660fc_clear_interrupt();
   // do_speak_the_time = true;
 }
 
-// FIXME UART activity: need to wake up for a while before we get RX interrupts.
+/* U(S)ART receive activity - PCINT16 - PCI2 */
 ISR(PCINT2_vect)
 {
-  uart_putstring("PCINT2", true);
-  do_speak_the_time = true;
+  uart_putstring(PSTR("PCINT2"), true);
+  /* FIXME: if we're being talked to on the serial port, stay awake for a while. */
+  wdt_reset();
 }
 
-ISR(USART_RX_vect)
-{
-  uint8_t c;
-  c = UDR0;
-  sei();
-  uart_putstring("USART_RX ", false);
-  uart_write(c);
-  uart_putstring("", true);
-  do_speak_the_time = true;
+ISR(WDT_vect) {
+  uart_putstring(PSTR("WATCH DOG"), true);
+  wdt_reset();
 }
+
+/* **************************************** */
 
 static void
 speak_the_time(void)
@@ -115,28 +122,28 @@ speak_the_time(void)
   struct ds1307_time_t t;
 
   if(ds1307_read(&t)) {
-    uart_putstring("The time is ", false);
+    uart_putstring(PSTR("The time is "), false);
     uart_putw_dec(t.hours);
-    uart_putstring(" hours ", false);
+    uart_putstring(PSTR(" hours "), false);
     uart_putw_dec(t.minutes);
-    uart_putstring(" minutes ", false);
+    uart_putstring(PSTR(" minutes "), false);
     uart_putw_dec(t.seconds);
-    uart_putstring(" seconds", true);
+    uart_putstring(PSTR(" seconds"), true);
 
-    speak(the);
-    speak(time);
-    speak(is);
+    speak_P(the);
+    speak_P(time);
+    speak_P(is);
     // FIXME pluralisation
     speak_number(t.hours);
-    speak(hours);
+    speak_P(hours);
     speak_number(t.minutes);
-    speak(minutes);
+    speak_P(minutes);
     speak_number(t.seconds);
-    speak(seconds);
+    speak_P(seconds);
   } else {
-    uart_debug_putstring("** ds1307 read failure");
-    speak(time);
-    speak(clown);
+    uart_debug_putstring(PSTR("** ds1307 read failure"));
+    speak_P(time);
+    speak_P(clown);
   }
 }
 
@@ -146,22 +153,22 @@ speak_acc_reading(void)
   int8_t x, y, z;
 
   if(mma7660fc_read_axes(&x, &y, &z)) {
-    uart_putstring("Acc read successful.", true);
+    uart_putstring(PSTR("Acc read successful."), true);
     uart_putw_dec(x);
-    uart_putstring("", true);
+    uart_putstring(PSTR(""), true);
     uart_putw_dec(y);
-    uart_putstring("", true);
+    uart_putstring(PSTR(""), true);
     uart_putw_dec(z);
-    uart_putstring("", true);
+    uart_putstring(PSTR(""), true);
 
-    speak(sensors);
+    speak_P(sensors);
     speak_number(x);
     speak_number(y);
     speak_number(z);
   } else {
-    uart_putstring("*** Acc read failed.", true);
-    speak(sensors);
-    speak(clown);
+    uart_putstring(PSTR("*** Acc read failed."), true);
+    speak_P(sensors);
+    speak_P(clown);
   }
 }
 
@@ -178,16 +185,53 @@ dump_acc_registers(void)
   for(int i = 0; i <= 0x0A; i++) {
     TWI_read(&twsr, &t, true);
     uart_putw_dec(t);
-    uart_putstring("", true);
+    uart_putstring(PSTR(""), true);
   }
 
   TWI_read(&twsr, &t, false);
   TWI_send_stop(&twsr);
 }
 
+/* **************************************** */
+/* Called by the Esterel code. */
+
+void
+check_alarm(void)
+{
+}
+
+void
+handle_accelerometer_interrupt(void)
+{
+}
+
+void
+sleep(void)
+{
+  uart_debug_putstring(PSTR("going to sleep"));
+  TWI_turn_off();
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_enable();
+  sleep_cpu();
+
+  /* ... and when we come back ... */
+
+  sleep_disable();
+  uart_debug_putstring(PSTR("woke up"));
+  TWI_init();
+}
+
+/* **************************************** */
+
 int
 main(void)
 {
+  /* No interruptions, thanks. */
+  cli();
+
+  /* Clear a watch-dog timer reset. */
+  WDTCSR &= ~_BV(WDRF) | ~_BV(WDE);
+
   /* Default all IO pins to inputs, no pull-ups. */
   DDRB = 0x0;
   DDRC = 0x0;
@@ -197,8 +241,7 @@ main(void)
   PORTC = 0x0;
   PORTD = 0x0;
 
-  /* Turn off the stuff we don't use. */
-  /* Analog comparator */
+  /* Turn off the stuff we don't use: analog comparator and ADC. */
   ACSR |= _BV(7);
   ADCSRA &= _BV(7);
 
@@ -212,67 +255,69 @@ main(void)
 
   PCICR = 0x0;
 
-  uart_init();
-  uart_putstring("Talking clock.", true);
+  /* Set up the watch-dog timer: interrupt, not system reset, 8s timeout. */
+  wdt_reset();
+  MCUCR &= ~_BV(WDRF);
+  WDTCSR = _BV(WDCE) | _BV(WDE);
+  WDTCSR =  _BV(WDIE) | _BV(WDP0) | _BV(WDP3);
+
+  uart_init(true);
+  uart_putstring(PSTR("Talking clock."), true);
 
   /* Interrupt when the U(S)ART receives something (and not when it sends something). */
   PCMSK2 = _BV(PCINT16);
   PCICR |= _BV(PCIE2);
 
+  /* 2-wire bus (TWI) device initialisation. */
+
   TWI_init();
 
-  uart_debug_putstring("Initialising the RTC (ds1307)...");
-  if(ds1307_init(true)) {
-    uart_debug_putstring("The RTC (ds1307) is initialised.");
-
-    /* Pull-up the RTC interrupt pin and listen for Pin Change interrupts. */
-    PORTC |= _BV(PC2);
-    PCMSK1 |= _BV(PCINT10);
-    PCICR |= _BV(PCIE1);
+  uart_debug_putstring(PSTR("Initialising the RTC (ds1307)..."));
+  if(ds1307_init(false)) {
+    uart_debug_putstring(PSTR("The RTC (ds1307) is initialised."));
   } else {
-    uart_debug_putstring("** The RTC (ds1307) failed to initialise.");
+    uart_debug_putstring(PSTR("** The RTC (ds1307) failed to initialise."));
   }
 
-  uart_debug_putstring("Initialising the accelerometer (mma7660)...");
+  uart_debug_putstring(PSTR("Initialising the accelerometer (mma7660)..."));
   if(mma7660fc_init()) {
-    uart_debug_putstring("The accelerometer (mma7660) is initialised.");
+    uart_debug_putstring(PSTR("The accelerometer (mma7660) is initialised."));
 
     /* Listen for accelerometer events. */
     PCMSK1 |= _BV(PCINT11);
     PCICR |= _BV(PCIE1);
   } else {
-    uart_debug_putstring("** The accelerometer (mma7660) failed to initialise.");
+    uart_debug_putstring(PSTR("** The accelerometer (mma7660) failed to initialise."));
   }
 
-  uart_debug_putstring("Initialising the SPO256...");
+  uart_debug_putstring(PSTR("Initialising the SPO256..."));
   spo256_init();
-  uart_debug_putstring("The SPO256 is initialised.");
+  uart_debug_putstring(PSTR("The SPO256 is initialised."));
 
   /* Enable interrupts after initialising everything. */
   sei();
 
   spo256_turn_on();
-  speak(talking_clock);
+  speak_P(talking_clock);
   spo256_turn_off();
 
+  CONTROLLER_reset();
+
+  /* FIXME this needs major structural adjustment. */
   while(1) {
+    /* FIXME debugging for the moment. */
     spo256_turn_on();
     speak_the_time();
-    speak_acc_reading();
+    // speak_acc_reading();
     spo256_turn_off();
 
-    /* Wait for an interrupt */
-    do_speak_the_time = false;
-    while(!do_speak_the_time) {
-      uart_debug_putstring("go to sleep");
-      TWI_sleep();
-      set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-      sleep_enable();
-      sleep_cpu();
-      sleep_disable();
-      uart_debug_putstring("woke up");
-      TWI_init();
-      dump_acc_registers();
-    }
+    sleep();
+
+    /* uart_debug_putstring(PSTR("Entering the Esterel controller...")); */
+
+    /* /\* Wait for an interrupt *\/ */
+    /* while(1) { */
+    /*   CONTROLLER(); */
+    /* } */
   }
 }

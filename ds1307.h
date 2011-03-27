@@ -166,18 +166,18 @@ ds1307_init(bool interrupts)
   if(!TWI_start(DS1307_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, 0x0)) goto error;
   if(!TWI_rep_start(DS1307_ADDR, &twsr, READ)) goto error;
-  if(!TWI_read(&twsr, &reg0, true)) goto error;
+  if(!TWI_read(&twsr, &reg0, false)) goto error;
 
   /* Turn off the clock halt if necessary. */
   if(reg0 & _BV(CLOCK_HALT)) {
-    if(!TWI_rep_start(DS1307_ADDR, &twsr, WRITE)) goto error;
+    if(!TWI_start(DS1307_ADDR, &twsr, WRITE)) goto error;
     if(!TWI_write(&twsr, 0x0)) goto error;
     if(!TWI_write(&twsr, reg0 & ~_BV(CLOCK_HALT))) goto error;
   }
 
   /* Fire up the 1Hz interrupt. */
   if(interrupts) {
-    if(!TWI_rep_start(DS1307_ADDR, &twsr, WRITE)) goto error;
+    if(!TWI_start(DS1307_ADDR, &twsr, WRITE)) goto error;
     if(!TWI_write(&twsr, SQW_CONTROL_REG)) goto error;
     if(!TWI_write(&twsr, _BV(SQW_SQWE) | SQW_RS1_RS0_1Hz)) goto error;
   }

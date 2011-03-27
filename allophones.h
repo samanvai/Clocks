@@ -35,6 +35,8 @@ FIXME note the ones that can be repeated.
 #ifndef _ALLOPHONES_H_
 #define _ALLOPHONES_H_
 
+#include <avr/pgmspace.h>
+
 enum {
   aPA1 = 0x00, /* 10 ms pause (before BB, DD, GG and JH) */
   aPA2 = 0x01, /* 30 ms pause (before BB, DD, GG and JH) */
@@ -108,5 +110,6 @@ enum {
 /* We don't know how big the enum type is, so hardwire it even though
  * GCC -fshort-enums probably gets it right. */
 typedef uint8_t allophone_t;
+typedef prog_uint8_t prog_allophone_t;
 
 #endif /* _ALLOPHONES_H_ */

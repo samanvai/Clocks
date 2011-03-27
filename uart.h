@@ -28,6 +28,9 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+FIXME add TX queue.
+
  */
 
 #ifndef _UART_H_
@@ -37,6 +40,7 @@
 #include <stdint.h>
 
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 
 #ifndef F_CPU
 #error "Please define the cpu frequency F_CPU"
@@ -45,6 +49,9 @@
 #ifndef BAUD
 #error "Please define the baud rate BAUD"
 #endif
+
+/* **************************************** */
+/* Primitive synchronous blocking read/write. */
 
 static inline uint8_t
 uart_read(void)
@@ -62,8 +69,87 @@ uart_write(uint8_t c)
   UDR0 = c;
 }
 
+/* **************************************** */
+/* Interrupts and FIFO buffers, asynchronous non-blocking read/write. */
+
+#define RCV_FIFO_LEN 8
+#define TX_FIFO_LEN 8
+
+static volatile uint8_t rcv_fifo[RCV_FIFO_LEN];
+static volatile uint8_t rcv_fifo_head, rcv_fifo_tail; /* implicitly initialized to 0 */
+
+static volatile uint8_t tx_fifo[TX_FIFO_LEN];
+static volatile uint8_t tx_fifo_head, tx_fifo_tail; /* implicitly initialized to 0 */
+
+/* The UART completely received something. */
+
+  /* FIXME ignore the issue of overflow. This is racey: Drop old data
+     when we overflow. Easiest to drop new data on the floor... but
+     last-data wins is probably nicer semantics. Maybe just flushing
+     on every overflow is not so bad either.
+
+     I think this code does this last thing.
+
+  */
+
+ISR(USART_RX_vect)
+{
+  /* Clears the RXC0 flag. */
+  rcv_fifo[rcv_fifo_tail] = UDR0;
+  rcv_fifo_tail = rcv_fifo_tail + 1 % RCV_FIFO_LEN;
+
+  /* if(rcv_fifo_tail == rcv_fifo_head) { */
+  /*   rcv_fifo_head = rcv_fifo_head + 1 % RCV_FIFO_LEN; */
+  /* } */
+}
+
+static inline bool
+uart_rcv(uint8_t *v)
+{
+  if(rcv_fifo_tail != rcv_fifo_head) {
+    *v = rcv_fifo[rcv_fifo_head];
+    rcv_fifo_head = rcv_fifo_head + 1 % RCV_FIFO_LEN;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static volatile bool tx_fifo_full = false;
+
+ISR(USART_UDRE_vect)
+{
+  if(tx_fifo_tail != tx_fifo_head) {
+    UDR0 = tx_fifo[tx_fifo_head];
+    tx_fifo_head = tx_fifo_head + 1 % TX_FIFO_LEN;
+    tx_fifo_full = false;
+  }
+}
+
 static inline void
-uart_init(void)
+uart_tx(uint8_t v)
+{
+  if(tx_fifo_tail == tx_fifo_head && (UCSR0A & _BV(UDRE0))) {
+    /* Transmitter is idle, wade right in. */
+    UDR0 = v;
+  } else {
+    /* Transmitter is busy, enqueue. */
+
+    /* Spin while the TX queue is full. */
+    while(tx_fifo_full)
+      ;
+
+    tx_fifo[tx_fifo_tail] = v;
+    tx_fifo_tail = tx_fifo_tail + 1 % TX_FIFO_LEN;
+
+    tx_fifo_full = (tx_fifo_tail + 1 % TX_FIFO_LEN) == tx_fifo_head;
+  }
+}
+
+/* **************************************** */
+
+static inline void
+uart_init(bool interrupts)
 {
   /* Fire up the UART module. */
   power_usart0_enable();
@@ -78,8 +164,10 @@ uart_init(void)
   UCSR0B = _BV(RXEN0) | _BV(TXEN0);
   UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
 
-  /* FIXME Receive Complete Interrupt Enable */
-  UCSR0B |= _BV(RXCIE0);
+  if(interrupts) {
+    /* Receive Complete Interrupt Enable */
+    UCSR0B |= _BV(RXCIE0);
+  }
 
 #if USE_2X
   UCSR0A |= (1 << U2X0);
@@ -88,16 +176,17 @@ uart_init(void)
 #endif
 }
 
+/* **************************************** */
+
 /* Print out a string stored in FLASH. */
 static void
-uart_putstring(const char *str, bool nl)
+uart_putstring(const prog_char *str, bool nl)
 {
   uint8_t i = 0;
 
   while(1) {
-    // char c = pgm_read_byte(&str[i]);
-    uint8_t c = str[i];
-    if(c) {
+    char c = pgm_read_byte(&str[i]);
+    if(c != '\0') {
       uart_write(c);
       i++;
     } else {
@@ -132,9 +221,8 @@ uart_putw_dec(uint16_t w)
 }
 
 // FIXME
-#define DEBUGGING 1
-#define DEBUG(x)  if(DEBUGGING) { x; }
-#define uart_debug_putstring(x) DEBUG(uart_putstring(x, true))
+#define IF_DEBUG(x)  if(DEBUG) { x; }
+#define uart_debug_putstring(x) IF_DEBUG(uart_putstring(x, true))
 
 // by default we stick strings in ROM to save RAM
 // #define putstring(x) ROM_putstring(PSTR(x), 0)

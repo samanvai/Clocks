@@ -1,17 +1,7 @@
-This is the code for a simple talking clock and thermometer. The
-hardware I used is as follows.
+This is the code for a simple talking clock and thermometer.
 
-* An AVR ATmega328P processor.
-* A DS1307 TWI/I2C real-time clock.
-* A DS18B20 1-wire temperature sensor.
-* An SPO256 speech synthesiser.
-* A MMA7660FC accelerometer.
-
-The circuitry is completely stock. The connections between the AVR and
-the other chips can be easily inferred from the source code.
-
-Most of this code is BSD licenced. Check the individual source files
-for details.
+Most of this code is BSD licenced (see COPYING). Check the individual
+source files for details.
 
 The DS18B20 code is due to Martin Thomas and others:
 
@@ -28,3 +18,50 @@ Serial port interface. Commands:
  - speak these allophones
  - set the time/date/alarm/...
  - arduino bootloader?
+
+= Hardware =
+
+The hardware I used is as follows.
+
+* An AVR ATmega328P processor.
+* A DS1307 TWI/I2C real-time clock.
+* A DS18B20 1-wire temperature sensor.
+* An SPO256 speech synthesiser.
+* A MMA7660FC accelerometer.
+
+The circuitry is completely stock. The connections between the AVR and
+the other chips can be easily inferred from the source code.
+
+I ran most of the circuit from 4 NiMH AAs, which yield 5v. The options
+are limited as both the DS1307 and the SPO256 need 5v to function.
+
+== MMA7660FC ==
+
+I bought one mounted on a breakout board from http://madscientisthut.com/
+
+I used a couple of FETs to do level conversion between the 5v used by
+the AVR and the 3v (approx) for the MMA7660FC. See
+http://www.sparkfun.com/tutorials/65
+
+The interrupt pin of the MMA7660FC can be directly connected to a GPIO
+on the AVR. Be careful not to set that pin as an output though!
+
+= Software =
+
+== Watch Dog Timer ==
+
+Used to generate an interrupt every 8s (approx). It isn't used to
+reset the system, so we don't want the WDTON fuse to be set.
+
+Originally I used the 1Hz oscillator on the DS1307 RTC, but it
+requires a pull-up resistor and hence consumes more power.
+
+    /* 1Hz tick from the RTC - PC2 - PCINT10 - PCI1. */
+    /* Pull-up the RTC interrupt pin and listen for Pin Change interrupts. */
+    PORTC |= _BV(PC2);
+    PCMSK1 |= _BV(PCINT10);
+    PCICR |= _BV(PCIE1);
+
+== Constants in program memory ==
+
+All string constants and allophone data live in program memory.

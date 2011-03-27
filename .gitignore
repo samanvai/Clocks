@@ -5,3 +5,6 @@ main.hex
 main.lst
 main.map
 junk/
+controller.c
+fuses_high
+fuses_low

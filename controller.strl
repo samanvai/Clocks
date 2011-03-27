@@ -1,0 +1,65 @@
+%{ -*- esterel -*-
+ * Clock controller.
+ *
+ * (C)opyright 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * Commenced March 2011.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above
+ *    copyright notice, this list of conditions and the following
+ *    disclaimer in the documentation and/or other materials provided
+ *    with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+}%
+
+module CONTROLLER :
+
+input wdt_interrupt;
+input accelerometer_interrupt;
+input uart_interrupt;
+
+%{ Sleep unless we're expecting FIXME UART events. }%
+procedure sleep() ();
+
+procedure check_alarm() ();
+procedure handle_accelerometer_interrupt() ();
+
+signal
+  SLEEP
+in
+  every immediate SLEEP do
+    call sleep () ();
+  end every;
+||
+  every immediate wdt_interrupt do
+    call check_alarm() ();
+  end every;
+||
+  every accelerometer_interrupt do
+    call handle_accelerometer_interrupt() ();
+  end every;
+||
+  every uart_interrupt do
+    emit SLEEP;
+  end every;
+
+end signal;
+
+end module
