@@ -51,35 +51,24 @@ FIXME add TX queue.
 #endif
 
 /* **************************************** */
-/* Primitive synchronous blocking read/write. */
+/* Primitive synchronous blocking read. */
 
-static inline uint8_t
-uart_read(void)
-{
-  while(! (UCSR0A & _BV(RXC0)))
-      ;
-  return UDR0;
-}
-
-static inline void
-uart_write(uint8_t c)
-{
-  while(! (UCSR0A & _BV(UDRE0)))
-      ;
-  UDR0 = c;
-}
+/* static inline uint8_t */
+/* uart_read(void) */
+/* { */
+/*   while(! (UCSR0A & _BV(RXC0))) */
+/*       ; */
+/*   return UDR0; */
+/* } */
 
 /* **************************************** */
 /* Interrupts and FIFO buffers, asynchronous non-blocking read/write. */
 
-#define RCV_FIFO_LEN 8
+#define RX_FIFO_LEN 8
 #define TX_FIFO_LEN 8
 
-static volatile uint8_t rcv_fifo[RCV_FIFO_LEN];
-static volatile uint8_t rcv_fifo_head, rcv_fifo_tail; /* implicitly initialized to 0 */
-
-static volatile uint8_t tx_fifo[TX_FIFO_LEN];
-static volatile uint8_t tx_fifo_head, tx_fifo_tail; /* implicitly initialized to 0 */
+static volatile uint8_t rx_fifo[RX_FIFO_LEN];
+static volatile uint8_t rx_fifo_head, rx_fifo_tail; /* implicitly initialized to 0 */
 
 /* The UART completely received something. */
 
@@ -95,79 +84,54 @@ static volatile uint8_t tx_fifo_head, tx_fifo_tail; /* implicitly initialized to
 ISR(USART_RX_vect)
 {
   /* Clears the RXC0 flag. */
-  rcv_fifo[rcv_fifo_tail] = UDR0;
-  rcv_fifo_tail = rcv_fifo_tail + 1 % RCV_FIFO_LEN;
+  rx_fifo[rx_fifo_tail] = UDR0;
+  rx_fifo_tail = (rx_fifo_tail + 1) % RX_FIFO_LEN;
 
-  /* if(rcv_fifo_tail == rcv_fifo_head) { */
-  /*   rcv_fifo_head = rcv_fifo_head + 1 % RCV_FIFO_LEN; */
+  /* if(rx_fifo_tail == rx_fifo_head) { */
+  /*   rx_fifo_head = (rx_fifo_head + 1) % RX_FIFO_LEN; */
   /* } */
 }
 
 static inline bool
-uart_rcv(uint8_t *v)
+uart_rx(uint8_t *v)
 {
-  if(rcv_fifo_tail != rcv_fifo_head) {
-    *v = rcv_fifo[rcv_fifo_head];
-    rcv_fifo_head = rcv_fifo_head + 1 % RCV_FIFO_LEN;
+  if(rx_fifo_tail != rx_fifo_head) {
+    *v = rx_fifo[rx_fifo_head];
+    rx_fifo_head = (rx_fifo_head + 1) % RX_FIFO_LEN;
     return true;
   } else {
     return false;
   }
 }
 
-static volatile bool tx_fifo_full = false;
-
-ISR(USART_UDRE_vect)
-{
-  if(tx_fifo_tail != tx_fifo_head) {
-    UDR0 = tx_fifo[tx_fifo_head];
-    tx_fifo_head = tx_fifo_head + 1 % TX_FIFO_LEN;
-    tx_fifo_full = false;
-  }
-}
-
 static inline void
-uart_tx(uint8_t v)
+uart_tx(uint8_t c)
 {
-  if(tx_fifo_tail == tx_fifo_head && (UCSR0A & _BV(UDRE0))) {
-    /* Transmitter is idle, wade right in. */
-    UDR0 = v;
-  } else {
-    /* Transmitter is busy, enqueue. */
-
-    /* Spin while the TX queue is full. */
-    while(tx_fifo_full)
+  while(! (UCSR0A & _BV(UDRE0)))
       ;
-
-    tx_fifo[tx_fifo_tail] = v;
-    tx_fifo_tail = tx_fifo_tail + 1 % TX_FIFO_LEN;
-
-    tx_fifo_full = (tx_fifo_tail + 1 % TX_FIFO_LEN) == tx_fifo_head;
-  }
+  UDR0 = c;
 }
 
 /* **************************************** */
 
 static inline void
-uart_init(bool interrupts)
+uart_init(void)
 {
   /* Fire up the UART module. */
   power_usart0_enable();
 
 #include <util/setbaud.h>
 
-  /* Set the baud rate */
+  /* Set the baud rate. */
   UBRR0H = UBRRH_VALUE;
   UBRR0L = UBRRL_VALUE;
 
-  /* Turn on the transmission and reception circuitry: 8 N 1. */
-  UCSR0B = _BV(RXEN0) | _BV(TXEN0);
+  /* 8 N 1 */
   UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
 
-  if(interrupts) {
-    /* Receive Complete Interrupt Enable */
-    UCSR0B |= _BV(RXCIE0);
-  }
+  /* Turn on the transmission and reception circuitry, Receive Complete Interrupt Enable. */
+  UCSR0B = _BV(RXEN0) | _BV(TXEN0) | _BV(RXCIE0);
+  /* Note the USART Data Register Empty Interrupt Enable gets set by the tx routines. */
 
 #if USE_2X
   UCSR0A |= (1 << U2X0);
@@ -178,16 +142,23 @@ uart_init(bool interrupts)
 
 /* **************************************** */
 
+static void
+uart_tx_nl(void)
+{
+  uart_tx('\n');
+  uart_tx('\r');
+}
+
 /* Print out a string stored in FLASH. */
 static void
-uart_putstring(const prog_char *str, bool nl)
+uart_putstringP(const prog_char *str, bool nl)
 {
   uint8_t i = 0;
 
   while(1) {
     char c = pgm_read_byte(&str[i]);
     if(c != '\0') {
-      uart_write(c);
+      uart_tx(c);
       i++;
     } else {
       break;
@@ -195,8 +166,7 @@ uart_putstring(const prog_char *str, bool nl)
   }
 
   if(nl) {
-    uart_write('\n');
-    uart_write('\r');
+    uart_tx_nl();
   }
 }
 
@@ -211,7 +181,7 @@ uart_putw_dec(uint16_t w)
       uint8_t b = w / num;
       if(b > 0 || started || num == 1)
 	{
-	  uart_write('0' + b);
+	  uart_tx('0' + b);
 	  started = 1;
 	}
       w -= b * num;
@@ -222,7 +192,7 @@ uart_putw_dec(uint16_t w)
 
 // FIXME
 #define IF_DEBUG(x)  if(DEBUG) { x; }
-#define uart_debug_putstring(x) IF_DEBUG(uart_putstring(x, true))
+#define uart_debug_putstringP(x) IF_DEBUG(uart_putstringP(x, true))
 
 // by default we stick strings in ROM to save RAM
 // #define putstring(x) ROM_putstring(PSTR(x), 0)

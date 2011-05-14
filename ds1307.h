@@ -61,6 +61,7 @@
 #define fromBCD(x) (((x) >> 4) * 10 + ((x) & 0xF))
 #define toBCD(x)   ((((x) / 10) << 4) | ((x) % 10))
 
+/* FIXME add bit widths */
 struct ds1307_time_t {
   uint8_t seconds;
   uint8_t minutes;

@@ -39,8 +39,8 @@ are limited as both the DS1307 and the SPO256 need 5v to function.
 
 I bought one mounted on a breakout board from http://madscientisthut.com/
 
-I used a couple of FETs to do level conversion between the 5v used by
-the AVR and the 3v (approx) for the MMA7660FC. See
+I used a couple of FETs to do I2C/TWI level conversion between the 5v
+used by the AVR and the 3v (approx) for the MMA7660FC. See
 http://www.sparkfun.com/tutorials/65
 
 The interrupt pin of the MMA7660FC can be directly connected to a GPIO

@@ -104,6 +104,9 @@ writeflash: hex
 
 install: writeflash
 
+reset:
+	$(AVRDUDE) $(AVRDUDE_FLAGS)
+
 read:
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -U hfuse:r:$(HIGH):b -U lfuse:r:$(LOW):b
 	# Remember 0 means 'programmed'.

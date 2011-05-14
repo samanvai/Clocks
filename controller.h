@@ -32,6 +32,15 @@
 #ifndef _CONTROLLER_H_
 #define _CONTROLLER_H_
 
-void SLEEP(void);
+/* The Esterel controller expects these to be defined. */
+
+void check_alarm(void);
+
+void handle_uart_reset(void);
+void handle_uart_event(void);
+
+void handle_accelerometer_event(void);
+
+void speak_the_time(void);
 
 #endif /* _CONTROLLER_H_ */
