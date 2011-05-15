@@ -28,7 +28,23 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-FIXME note the ones that can be repeated.
+FIXME
+
+As mentioned earlier there are some vowels which can be doubled to
+make longer versions for stressed syllables. These are the inherently
+short vowels IH, EH, AE, AX, AA, and UH. For example, in the word
+“extent” use one EH in the first syllable, which is unstressed and two
+EHs in the second syllable which is stressed. Of the inherently long
+vowels there is one, UW , which has a long and short version.
+
+The short one, UW1, sounds good after YY in computer. The long
+version, UW2, sounds good in mono-syllabic words like “two”. Included
+in the vowel set is a group called R-colored vowels. These are vowel +
+R combinations. For example, the AR in “alarm” and the OR in
+“score”. Of the R- colored vowels there is one, ER, which has a long
+and short version. The short version is good for polysyllabic words
+with final ER sounds like “letter”, and the long version is good for
+monosyllabic words like “fir”.
 
  */
 

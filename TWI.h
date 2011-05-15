@@ -40,15 +40,6 @@
 #include <avr/io.h>
 #include <util/twi.h>
 
-#ifndef F_CPU
-#error "Please define the cpu frequency F_CPU"
-#endif
-
-/* TWI clock in Hz. 400kHz is the limit. With a 1MHz clock try ~ 10kHz. */
-#ifndef SCL_CLOCK
-#error "Please define the TWI clock frequency SCL_CLOCK"
-#endif
-
 typedef enum { READ, WRITE } rw_t;
 
 /* **************************************** */
@@ -140,33 +131,6 @@ static inline bool
 TWI_rep_start(uint8_t slave_addr, uint8_t *twsr, rw_t rw)
 {
   return TWI_start(slave_addr, twsr, rw);
-}
-
-static inline void
-TWI_init(void)
-{
-  /* Fire up the TWI module. */
-  power_twi_enable();
-
-  /* TWI timing: prescaler: 1. */
-  TWSR = 0;
-
-  // FIXME for a 1MHz AVR clock / 400kHz TWI clock:
-  //    TWI.h:157: warning: large integer implicitly truncated to unsigned type
-  // FIXME SCL frequency = 1159200 / (16 + 2 * 47 * 1) = 98.743 khz
-#if (F_CPU / SCL_CLOCK - 16) / 2 <= 10
-#error (F_CPU / SCL_CLOCK - 16) / 2 should be > 10 for stable operation
-#endif
-  TWBR = (F_CPU / SCL_CLOCK - 16) / 2;
-
-  /* Don't bother setting the TWAR - slave address register. */
-}
-
-static inline void
-TWI_turn_off(void)
-{
-  
-  power_twi_disable();
 }
 
 #endif /* _TWI_H_ */

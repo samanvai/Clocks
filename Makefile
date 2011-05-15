@@ -66,6 +66,8 @@ all: main.hex
 controller.c: controller.strl
 	$(ESTEREL) $(ESTEREL_FLAGS) controller.strl -B controller
 
+commands.S: commands.c commands.h ds1307.h mma7660fc.h spo256.h TWI.h uart.h
+
 controller.o: controller.c
 	$(CC) $(CFLAGS) $(ESTEREL_EXTRA_CFLAGS) -c $< -o $@
 
@@ -73,11 +75,13 @@ crc.S: crc8.c crc8.h
 
 ds18x20.o: ds18x20.c crc8.h ds18x20.h onewire.h
 
-main.S: main.c allophones.h ds1307.h mma7660fc.h spo256.h TWI.h uart.h
+main.S: main.c allophones.h ds1307.h mma7660fc.h spo256.h TWI.h TWI_init.h uart.h uart_init.h
 
 onewire.S: onewire.c onewire.h
 
-main.elf: main.o controller.o # crc8.o ds18x20.o onewire.o
+spo256.S: spo256.c spo256.h
+
+main.elf: main.o commands.o controller.o spo256.o uart.o # crc8.o ds18x20.o onewire.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
 main.hex: main.elf

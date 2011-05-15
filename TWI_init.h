@@ -1,8 +1,14 @@
 /*
- * UART driver for an ATMEGA328. Note the constant names are specific
- * to this chip (and perhaps other closely related ones).
+ * TWI driver for an ATMEGA328 (really any AVR with TWI hardware).
  *
- * (C)opyright 2010, 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * Initialisation routines.
+ *
+ * Synchronous, no interrupts in sight. Some ideas from Peter Fleury's
+ * code:
+ *
+ *    http://code.google.com/p/freecockpit/source/browse/software_avr/hwmaster_mega8/twimaster.c
+ *
+ * (C)opyright 2010 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
  * Commenced September 2010.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,37 +34,48 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-FIXME add TX queue.
-
  */
 
-#ifndef _UART_H_
-#define _UART_H_
+#ifndef _TWI_INIT_H_
+#define _TWI_INIT_H_
 
-#include <stdbool.h>
-#include <stdint.h>
+#include <avr/io.h>
+#include <util/twi.h>
 
-#include <avr/pgmspace.h>
+#ifndef F_CPU
+#error "Please define the cpu frequency F_CPU"
+#endif
 
-bool uart_rx(uint8_t *v);
+/* TWI clock in Hz. 400kHz is the limit. With a 1MHz clock try ~ 10kHz. */
+#ifndef SCL_CLOCK
+#error "Please define the TWI clock frequency SCL_CLOCK"
+#endif
 
-/* Inlining this should be cheap. */
 static inline void
-uart_tx(uint8_t c)
+TWI_init(void)
 {
-  while(! (UCSR0A & _BV(UDRE0)))
-      ;
-  UDR0 = c;
+  /* Fire up the TWI module. */
+  power_twi_enable();
+
+  /* TWI timing: prescaler: 1. */
+  TWSR = 0;
+
+  // FIXME for a 1MHz AVR clock / 400kHz TWI clock:
+  //    TWI.h:157: warning: large integer implicitly truncated to unsigned type
+  // FIXME SCL frequency = 1159200 / (16 + 2 * 47 * 1) = 98.743 khz
+#if (F_CPU / SCL_CLOCK - 16) / 2 <= 10
+#error (F_CPU / SCL_CLOCK - 16) / 2 should be > 10 for stable operation
+#endif
+  TWBR = (F_CPU / SCL_CLOCK - 16) / 2;
+
+  /* Don't bother setting the TWAR - slave address register. */
 }
 
-void uart_tx_nl(void);
-void uart_putstring(const char *str, bool nl);
-void uart_putstringP(const prog_char *str, bool nl);
-void uart_putw_dec(uint16_t w);
+/* FIXME useful? */
+static inline void
+TWI_turn_off(void)
+{
+  power_twi_disable();
+}
 
-/* FIXME debugging */
-#define IF_DEBUG(x)  if(DEBUG) { x; }
-#define uart_debug_putstringP(x) IF_DEBUG(uart_putstringP(x, true))
-
-#endif /* _UART_H_ */
+#endif /* _TWI_INIT_H_ */

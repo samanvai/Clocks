@@ -1,5 +1,5 @@
 /*
- * Simple talking clock / thermometer.
+ * Simple talking clock.
  *
  * See the various headers for the port connections.
  *
@@ -62,6 +62,7 @@ FIXME slow down the CPU - 500kHz? TWI / UART might be the limit.
 
 #define BAUD 9600
 #include "uart.h"
+#include "uart_init.h"
 
 #include "spo256.h"
 
@@ -70,8 +71,12 @@ FIXME slow down the CPU - 500kHz? TWI / UART might be the limit.
 #define SCL_CLOCK  10000L
 
 #include "TWI.h"
+#include "TWI_init.h"
+
 #include "ds1307.h"
 #include "mma7660fc.h"
+
+#include "commands.h"
 
 /* **************************************** */
 /* The Esterel controller defines these. */
@@ -107,10 +112,9 @@ ISR(PCINT0_vect)
 ISR(PCINT1_vect)
 {
   uart_debug_putstringP(PSTR("PCINT1"));
+  // FIXME probably not necessary
+  mma7660fc_clear_interrupt();
   events.event_accelerometer = true;
-
-  // mma7660fc_clear_interrupt();
-  // do_speak_the_time = true;
 }
 
 /* U(S)ART receive activity - PCINT16 - PCI2 */
@@ -130,74 +134,7 @@ ISR(WDT_vect) {
 }
 
 /* **************************************** */
-/* Debugging */
-
-static void
-dump_acc_registers(void)
-{
-  uint8_t twsr;
-  uint8_t t;
-
-  TWI_start(MMA7660FC_ADDR, &twsr, WRITE);
-  TWI_write(&twsr, 0x0);
-  TWI_rep_start(MMA7660FC_ADDR, &twsr, READ);
-
-  for(uint8_t i = 0; i <= 0x0A; i++) {
-    TWI_read(&twsr, &t, true);
-    uart_putw_dec(t);
-    uart_tx_nl();
-  }
-
-  TWI_read(&twsr, &t, false);
-  TWI_send_stop(&twsr);
-}
-
-/* **************************************** */
-/* Esterel call backs. These are guaranteed not to be re-entered, so
-   cheesy global state will do. */
-
-#define BUF_SIZE 4
-char buf[BUF_SIZE];
-uint8_t buf_index = 0;
-
-void
-handle_uart_reset(void)
-{
-  uart_debug_putstringP(PSTR("handle_uart_reset()"));
-  buf_index = 0;
-}
-
-void
-handle_uart_event(void)
-{
-  uint8_t c;
-
-  uart_debug_putstringP(PSTR("handle_uart_event()"));
-
-  /* Wait for a character to be received. */
-  while(!uart_rx(&c))
-    ;
-
-  buf[buf_index] = c;
-  buf_index++;
-
-  uart_debug_putstringP(PSTR("handle_uart_event(): got character"));
-
-  if(buf_index == BUF_SIZE) {
-    uart_debug_putstringP(PSTR("handle_uart_event(): dumping buffer"));
-
-    for(int i = 0; i < BUF_SIZE; i++) {
-      uart_tx(buf[i]);
-    }
-    uart_tx_nl();
-
-    buf_index = 0;
-
-    dump_acc_registers();
-  }
-
-  uart_debug_putstringP(PSTR("handle_uart_event() finished"));
-}
+/* Esterel call backs. */
 
 void
 handle_accelerometer_event(void)
@@ -209,62 +146,6 @@ void
 check_alarm(void)
 {
   uart_debug_putstringP(PSTR("check_alarm()"));
-}
-
-void
-speak_the_time(void)
-{
-  struct ds1307_time_t t;
-
-  if(ds1307_read(&t)) {
-    uart_putstringP(PSTR("The time is "), false);
-    uart_putw_dec(t.hours);
-    uart_putstringP(PSTR(" hours "), false);
-    uart_putw_dec(t.minutes);
-    uart_putstringP(PSTR(" minutes "), false);
-    uart_putw_dec(t.seconds);
-    uart_putstringP(PSTR(" seconds"), true);
-
-    speak_P(the);
-    speak_P(time);
-    speak_P(is);
-    // FIXME pluralisation
-    speak_number(t.hours);
-    speak_P(hours);
-    speak_number(t.minutes);
-    speak_P(minutes);
-    speak_number(t.seconds);
-    speak_P(seconds);
-  } else {
-    uart_debug_putstringP(PSTR("** ds1307 read failure"));
-    speak_P(time);
-    speak_P(clown);
-  }
-}
-
-static void
-speak_acc_reading(void)
-{
-  int8_t x, y, z;
-
-  if(mma7660fc_read_axes(&x, &y, &z)) {
-    uart_putstringP(PSTR("Acc read successful."), true);
-    uart_putw_dec(x);
-    uart_putstringP(PSTR(""), true);
-    uart_putw_dec(y);
-    uart_putstringP(PSTR(""), true);
-    uart_putw_dec(z);
-    uart_putstringP(PSTR(""), true);
-
-    speak_P(sensors);
-    speak_number(x);
-    speak_number(y);
-    speak_number(z);
-  } else {
-    uart_putstringP(PSTR("*** Acc read failed."), true);
-    speak_P(sensors);
-    speak_P(clown);
-  }
 }
 
 /* **************************************** */

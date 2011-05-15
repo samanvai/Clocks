@@ -1,8 +1,11 @@
 /*
- * C functions called by the Esterel controller for the talking clock.
+ * UART driver for an ATMEGA328. Note the constant names are specific
+ * to this chip (and perhaps other closely related ones).
  *
- * (C)opyright 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
- * Commenced March 2011.
+ * Initialisation routines.
+ *
+ * (C)opyright 2010, 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
+ * Commenced September 2010.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,17 +32,41 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CONTROLLER_H_
-#define _CONTROLLER_H_
+#ifndef _UART_INIT_H_
+#define _UART_INIT_H_
 
-/* The Esterel controller expects these to be defined. */
+#ifndef F_CPU
+#error "Please define the cpu frequency F_CPU"
+#endif
 
-#include "commands.h"
+#ifndef BAUD
+#error "Please define the baud rate BAUD"
+#endif
 
-void check_alarm(void);
+static inline void
+uart_init(void)
+{
+  /* Fire up the UART module. */
+  power_usart0_enable();
 
-void handle_accelerometer_event(void);
+#include <util/setbaud.h>
 
-void speak_the_time(void);
+  /* Set the baud rate. */
+  UBRR0H = UBRRH_VALUE;
+  UBRR0L = UBRRL_VALUE;
 
-#endif /* _CONTROLLER_H_ */
+  /* 8 N 1 */
+  UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
+
+  /* Turn on the transmission and reception circuitry, Receive Complete Interrupt Enable. */
+  UCSR0B = _BV(RXEN0) | _BV(TXEN0) | _BV(RXCIE0);
+  /* Note the USART Data Register Empty Interrupt Enable gets set by the tx routines. */
+
+#if USE_2X
+  UCSR0A |= (1 << U2X0);
+#else
+  UCSR0A &= ~(1 << U2X0);
+#endif
+}
+
+#endif /* _UART_INIT_H_ */

@@ -102,16 +102,15 @@
 #define MMA7660FC_MODE_IAH   7
 
 typedef enum {
-  mma7660fc_mode_standby = 0x0,
-  mma7660fc_mode_test    = _BV(MMA7660FC_MODE_TON),
-  mma7660fc_mode_active  = _BV(MMA7660FC_MODE_MODE)
-} mma7660fc_mode_t;
+  MMA7660FC_MODE_STANDBY = 0x0,
+  MMA7660FC_MODE_TEST    = _BV(MMA7660FC_MODE_TON),
+  MMA7660FC_MODE_ACTIVE  = _BV(MMA7660FC_MODE_MODE)
+} MMA7660FC_MODE_t;
 
 /* Auto-wake/sleep, samples, debounce filter register. */
 #define MMA7660FC_SR_REG    0x08
 
 typedef enum {
-  mma7660fc_sr_AMPD = 0x0,
   /*
 Tap Detection Mode and 120 Samples/Second Active and Auto-Sleep Mode
 Tap Detection Sampling Rate: The device takes readings continually at
@@ -129,31 +128,35 @@ Auto-Sleep. The update rate is 120 samples per second. These
 measurements update the XOUT (0x00), YOUT (0x01), and ZOUT (0x02)
 registers also.
   */
-  mma7660fc_sr_AW8 = _BV(4),
+  MMA7660FC_SR_AMPD = 0x0,
   /*
 8 Samples/Second Auto-Wake Mode For portrait/landscape detection: The
 device takes and averages 32 g-cell measurements every 125 ms in
 Auto-Wake. The update rate is 8 samples per second. These measurements
 update the XOUT (0x00), YOUT (0x01), and ZOUT (0x02) registers also.
    */
-  mma7660fc_sr_FILT4 = _BV(6) | _BV(5),
+  MMA7660FC_SR_AM8 = _BV(4),
   /*
 4 measurement samples at the rate set by AMSR[2:0] or AWSR[1:0] have
 to match before the device updates portrait/ landscape data in TILT
 (0x03) register.
    */
+  MMA7660FC_SR_FILT4 = _BV(6) | _BV(5),
 } mma7660fc_sr_t;
 
 /* Tap detection register. */
 #define MMA7660FC_PDET_REG  0x09
 
-#define MMA7660FC_PDET_PDTH 0
+/* bits 0-4 are the count register */
+#define MMA7660FC_PDET_PDTH(x) ((x) & 0x1F)
 #define MMA7660FC_PDET_XDA  5
 #define MMA7660FC_PDET_YDA  6
 #define MMA7660FC_PDET_ZDA  7
 
 /* Tap debounce count. */
 #define MMA7660FC_PD_REG    0x0A
+
+#define MMA7660FC_PD_REG_VAL(x) ((x) <= 2 ? 1 : (x) - 1)
 
 /* **************************************** */
 /* Ask the accelerometer for the axes readings. */
@@ -208,7 +211,7 @@ mma7660fc_read_axes(int8_t *x, int8_t *y, int8_t *z)
 /* **************************************** */
 
 static inline bool
-mma7660fc_set_mode(mma7660fc_mode_t mode)
+mma7660fc_set_mode(MMA7660FC_MODE_t mode)
 {
   uint8_t twsr;
 
@@ -247,24 +250,6 @@ mma7660fc_clear_interrupt(void)
   return false;
 }
 
-/* stuff from the app note
-
-//Configure MMA7660FC as Tap Detection
-Write to the MODE register = 0x00 //Standby Mode
-Write to the SPCNT register = 0x00 //No sleep count
-Write to the INTSU register = 0x04 // Configure tap detection Interrupt
-Write to the PDET register = 0x6C // Only Z axis tap detection on, threshold ±12 counts
-Write to the SR register = 0x00 //120 samples/s
-Write to the PD register = 0x08 // Tap detection debounce count = 9
-Write to the MODE register = 0x41 //Active Mode, INT = push-pull and active low
-//Interrupt service routine
-If (Tap INT occurs)
-REGTILT=Read TILT Register;        //Read TILT Register value    
-    
-If (Tap =1) //Verify ”Tap” bit in TILT register
-
-*/
-
 /* Initialise the MMA7660. Assumes the TWI interface is already initialised. */
 static inline bool
 mma7660fc_init(void)
@@ -272,7 +257,7 @@ mma7660fc_init(void)
   uint8_t twsr;
 
   /* Device must be placed in standby mode before we can change its registers. */
-  if(!mma7660fc_set_mode(mma7660fc_mode_standby)) goto error;
+  if(!mma7660fc_set_mode(MMA7660FC_MODE_STANDBY)) goto error;
 
   /* No sleep count. */
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
@@ -283,28 +268,28 @@ mma7660fc_init(void)
   /* Configure tap detection interrupt. FIXME abstract */
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, MMA7660FC_INTSU_REG)) goto error;
-  if(!TWI_write(&twsr, 0x4)) goto error;
+  if(!TWI_write(&twsr, _BV(MMA7660FC_INTSU_PDINT))) goto error;
   TWI_send_stop(&twsr);
 
-  /* Only Z axis tap detection on, threshold ±12 counts */
+  /* Only Z axis tap detection on, threshold +/-12 counts */
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, MMA7660FC_PDET_REG)) goto error;
-  if(!TWI_write(&twsr, 0x6C)) goto error;
+  if(!TWI_write(&twsr, _BV(MMA7660FC_PDET_XDA) | _BV(MMA7660FC_PDET_YDA) | _BV(MMA7660FC_PDET_ZDA) | MMA7660FC_PDET_PDTH(12))) goto error;
   TWI_send_stop(&twsr);
 
   /* 120 samples/s. */
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, MMA7660FC_SR_REG)) goto error;
-  if(!TWI_write(&twsr, 0x0)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_SR_AMPD)) goto error;
   TWI_send_stop(&twsr);
 
   /* Tap detection debounce count = 9. */
   if(!TWI_start(MMA7660FC_ADDR, &twsr, WRITE)) goto error;
   if(!TWI_write(&twsr, MMA7660FC_PD_REG)) goto error;
-  if(!TWI_write(&twsr, 0x08)) goto error;
+  if(!TWI_write(&twsr, MMA7660FC_PD_REG_VAL(9))) goto error;
   TWI_send_stop(&twsr);
 
-  if(!mma7660fc_set_mode(mma7660fc_mode_active | _BV(MMA7660FC_MODE_IPP))) goto error;
+  if(!mma7660fc_set_mode(MMA7660FC_MODE_ACTIVE | _BV(MMA7660FC_MODE_IPP))) goto error;
 
   return true;
 

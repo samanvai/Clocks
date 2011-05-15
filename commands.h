@@ -1,8 +1,8 @@
 /*
- * C functions called by the Esterel controller for the talking clock.
+ * Command interpreter.
  *
  * (C)opyright 2011 Peter Gammie, peteg42 at gmail dot com. All rights reserved.
- * Commenced March 2011.
+ * Commenced May 2011.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,17 +29,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _CONTROLLER_H_
-#define _CONTROLLER_H_
+#ifndef _COMMANDS_H_
+#define _COMMANDS_H_
 
-/* The Esterel controller expects these to be defined. */
+void handle_uart_reset(void);
+void handle_uart_event(void);
 
-#include "commands.h"
-
-void check_alarm(void);
-
-void handle_accelerometer_event(void);
-
-void speak_the_time(void);
-
-#endif /* _CONTROLLER_H_ */
+#endif /* _COMMANDS_H_ */
