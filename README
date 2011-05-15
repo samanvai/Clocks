@@ -24,6 +24,8 @@ Serial port interface. Commands:
 - uart_debug_putstringP sometimes seems to drop things.
  - I thought uart_tx does enough synchronisation, i.e. we wait for the
    buffer to be ready.
+- rename commands -> events and move more stuff in there
+- shuffle more stuff out of headers into c files
 
 = Hardware =
 

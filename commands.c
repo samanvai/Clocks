@@ -101,6 +101,50 @@ speak_acc_reading(void)
   }
 }
 
+/* FIXME quick hack */
+static bool
+speak_acc_orientation(void)
+{
+  static mma7660fc_tilt_orientation_t o_old;
+  mma7660fc_tilt_orientation_t o;
+  mma7660fc_tilt_back_front_t bf;
+
+  if(mma7660fc_read_tilt(&o, &bf)) {
+    if(o != o_old) {
+      switch(o) {
+      case MMA7660FC_tilt_left:
+        uart_debug_putstringP(PSTR("** acc left"));
+        speak_P(left);
+        break;
+      case MMA7660FC_tilt_right:
+        uart_debug_putstringP(PSTR("** acc right"));
+        speak_P(right);
+        break;
+      case MMA7660FC_tilt_down:
+        uart_debug_putstringP(PSTR("** acc down"));
+        speak_P(down);
+        break;
+      case MMA7660FC_tilt_up:
+        uart_debug_putstringP(PSTR("** acc up"));
+        speak_P(up);
+        break;
+      }
+
+      o_old = o;
+
+      return true;
+    } else {
+      uart_debug_putstringP(PSTR("** orientation hasn't changed"));
+    }
+  } else {
+    uart_putstringP(PSTR("*** Acc read failed."), true);
+    speak_P(sensors);
+    speak_P(clown);
+  }
+
+  return false;
+}
+
 static void
 dump_acc_registers(void)
 {
@@ -122,7 +166,27 @@ dump_acc_registers(void)
 }
 
 /* **************************************** */
-/* Process commands */
+
+void
+handle_accelerometer_event(void)
+{
+  uart_debug_putstringP(PSTR("handle_accelerometer_event()"));
+
+  // FIXME probably not necessary
+  // mma7660fc_clear_interrupt();
+
+  /* FIXME debugging */
+  spo256_turn_on();
+  dump_acc_registers();
+  if(speak_acc_orientation()) {
+    speak_the_time();
+  }
+  spo256_turn_off();
+
+  uart_debug_putstringP(PSTR("handle_accelerometer_event() finished"));
+}
+
+/* **************************************** */
 
 static void
 process_command(char *cmd)
@@ -175,11 +239,13 @@ handle_uart_event(void)
       }
       uart_tx_nl();
 
+      process_command(command_buffer);
+
       command_buffer_index = 0;
 
       /* FIXME debugging */
       spo256_turn_on();
-      speak_acc_reading();
+      // speak_acc_reading();
       dump_acc_registers();
       speak_the_time();
       spo256_turn_off();

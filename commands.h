@@ -32,6 +32,8 @@
 #ifndef _COMMANDS_H_
 #define _COMMANDS_H_
 
+void handle_accelerometer_event(void);
+
 void handle_uart_reset(void);
 void handle_uart_event(void);
 

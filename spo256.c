@@ -191,6 +191,21 @@ const prog_allophone_t
 time[] = { aTT2, 0x06, 0x10, aEND };
 
 /* **************************************** */
+/* FIXME directions, rough */
+
+const prog_allophone_t
+left[] = { aLL, aEH, aFF, aTT1, aEND };
+
+const prog_allophone_t
+right[] = { aRR1, aIH, aTT1, aEND };
+
+const prog_allophone_t
+up[] = { aAX, aPP, aEND };
+
+const prog_allophone_t
+down[] = { aDD2, aAW, aNN1, aEND };
+
+/* **************************************** */
 /* Numbers */
 
 const prog_allophone_t

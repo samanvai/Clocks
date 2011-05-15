@@ -112,8 +112,6 @@ ISR(PCINT0_vect)
 ISR(PCINT1_vect)
 {
   uart_debug_putstringP(PSTR("PCINT1"));
-  // FIXME probably not necessary
-  mma7660fc_clear_interrupt();
   events.event_accelerometer = true;
 }
 
@@ -135,12 +133,6 @@ ISR(WDT_vect) {
 
 /* **************************************** */
 /* Esterel call backs. */
-
-void
-handle_accelerometer_event(void)
-{
-  uart_debug_putstringP(PSTR("handle_accelerometer_event()"));
-}
 
 void
 check_alarm(void)
@@ -223,7 +215,7 @@ main(void)
   }
 
   uart_debug_putstringP(PSTR("Initialising the accelerometer (mma7660)..."));
-  if(mma7660fc_init()) {
+  if(mma7660fc_init_Bryan()) {
     uart_debug_putstringP(PSTR("The accelerometer (mma7660) is initialised."));
 
     /* Listen for accelerometer events. */
@@ -261,6 +253,10 @@ main(void)
 
        So double-buffering it must be. Marshall the events here.
 
+       FIXME we need to loop here if we're talking, as many events
+       could occur during those seconds. We can't go straight back to
+       sleep in all cases.
+
     */
 
     if(events.event_accelerometer) {
@@ -279,6 +275,9 @@ main(void)
     uart_debug_putstringP(PSTR("Entering the Esterel controller."));
     CONTROLLER();
     uart_debug_putstringP(PSTR("Exiting the Esterel controller."));
+
+    // FIXME the uart handler clears out the RX buffer...
+    events.event_uart = 0;
   }
 
     /* FIXME debugging for the moment. */

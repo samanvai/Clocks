@@ -77,11 +77,13 @@ ds18x20.o: ds18x20.c crc8.h ds18x20.h onewire.h
 
 main.S: main.c allophones.h ds1307.h mma7660fc.h spo256.h TWI.h TWI_init.h uart.h uart_init.h
 
+mma7660fc.S: mma7660fc.c mma7660fc.h TWI.h
+
 onewire.S: onewire.c onewire.h
 
 spo256.S: spo256.c spo256.h
 
-main.elf: main.o commands.o controller.o spo256.o uart.o # crc8.o ds18x20.o onewire.o
+main.elf: main.o commands.o controller.o mma7660fc.o spo256.o uart.o # crc8.o ds18x20.o onewire.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
 main.hex: main.elf

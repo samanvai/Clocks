@@ -126,4 +126,9 @@ extern const prog_allophone_t the[];
 extern const prog_allophone_t thousand[];
 extern const prog_allophone_t time[];
 
+extern const prog_allophone_t left[];
+extern const prog_allophone_t right[];
+extern const prog_allophone_t up[];
+extern const prog_allophone_t down[];
+
 #endif /* _SPO256_H_ */
